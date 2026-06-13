@@ -11,6 +11,7 @@ from backend.generation.llm_client import (
     MAX_TOKENS,
     OLLAMA_MODEL,
     _generate_anthropic,
+    _generate_ollama,
 )
 
 
@@ -76,3 +77,69 @@ def test_generate_anthropic_yields_empty_on_no_chunks():
         with patch("anthropic.Anthropic", return_value=mock_client):
             result = list(_generate_anthropic("prompt", "system"))
     assert result == []
+
+
+def _make_ollama_response(chunks: list[str]) -> MagicMock:
+    """Mock requests streaming response with newline-delimited JSON lines."""
+    lines = [
+        json.dumps({"message": {"content": c}, "done": False}).encode()
+        for c in chunks
+    ]
+    resp = MagicMock()
+    resp.__enter__ = MagicMock(return_value=resp)
+    resp.__exit__ = MagicMock(return_value=False)
+    resp.iter_lines.return_value = iter(lines)
+    return resp
+
+
+def test_generate_ollama_yields_chunks():
+    with patch("requests.post", return_value=_make_ollama_response(["chunk1", "chunk2"])):
+        result = list(_generate_ollama("prompt", "system"))
+    assert result == ["chunk1", "chunk2"]
+
+
+def test_generate_ollama_uses_ollama_url_from_env():
+    with patch.dict("os.environ", {"OLLAMA_URL": "http://custom-ollama:1234"}):
+        with patch("requests.post", return_value=_make_ollama_response([])) as mock_post:
+            list(_generate_ollama("prompt", "system"))
+    assert mock_post.call_args[0][0] == "http://custom-ollama:1234/api/chat"
+
+
+def test_generate_ollama_uses_default_url_when_env_not_set():
+    env_without_ollama = {k: v for k, v in os.environ.items() if k != "OLLAMA_URL"}
+    with patch.dict("os.environ", env_without_ollama, clear=True):
+        with patch("requests.post", return_value=_make_ollama_response([])) as mock_post:
+            list(_generate_ollama("prompt", "system"))
+    assert mock_post.call_args[0][0] == "http://localhost:11434/api/chat"
+
+
+def test_generate_ollama_sends_system_and_user_messages():
+    with patch("requests.post", return_value=_make_ollama_response([])) as mock_post:
+        list(_generate_ollama("user prompt", "sys instruction"))
+    payload = mock_post.call_args[1]["json"]
+    assert {"role": "system", "content": "sys instruction"} in payload["messages"]
+    assert {"role": "user", "content": "user prompt"} in payload["messages"]
+
+
+def test_generate_ollama_sends_correct_model():
+    with patch("requests.post", return_value=_make_ollama_response([])) as mock_post:
+        list(_generate_ollama("prompt", "system"))
+    assert mock_post.call_args[1]["json"]["model"] == OLLAMA_MODEL
+
+
+def test_generate_ollama_streams_enabled():
+    with patch("requests.post", return_value=_make_ollama_response([])) as mock_post:
+        list(_generate_ollama("prompt", "system"))
+    assert mock_post.call_args[1]["json"]["stream"] is True
+
+
+def test_generate_ollama_empty_content_chunks_skipped():
+    lines = [
+        json.dumps({"message": {"content": ""}, "done": False}).encode(),
+        json.dumps({"message": {"content": "real"}, "done": False}).encode(),
+    ]
+    resp = _make_ollama_response([])
+    resp.iter_lines.return_value = iter(lines)
+    with patch("requests.post", return_value=resp):
+        result = list(_generate_ollama("prompt", "system"))
+    assert result == ["real"]

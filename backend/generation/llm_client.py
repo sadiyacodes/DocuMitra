@@ -30,3 +30,22 @@ def _generate_anthropic(prompt: str, system: str) -> Iterator[str]:
     ) as stream:
         for text in stream.text_stream:
             yield text
+
+
+def _generate_ollama(prompt: str, system: str) -> Iterator[str]:
+    """Stream text chunks from Ollama via HTTP."""
+    url = os.getenv("OLLAMA_URL", "http://localhost:11434") + "/api/chat"
+    payload = {
+        "model": OLLAMA_MODEL,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": prompt},
+        ],
+        "stream": True,
+    }
+    with requests.post(url, json=payload, stream=True) as resp:
+        resp.raise_for_status()
+        for line in resp.iter_lines():
+            if line:
+                if chunk := json.loads(line).get("message", {}).get("content", ""):
+                    yield chunk
