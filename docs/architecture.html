@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>DocuMitra — Architecture</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    font-size: 13px;
+    color: #1a1a2e;
+    background: #ffffff;
+    padding: 48px 56px;
+    max-width: 960px;
+    margin: 0 auto;
+  }
+  h1 {
+    font-size: 28px;
+    font-weight: 700;
+    color: #1a1a2e;
+    margin-bottom: 6px;
+    letter-spacing: -0.5px;
+  }
+  .subtitle {
+    font-size: 14px;
+    color: #64748b;
+    margin-bottom: 36px;
+  }
+  h2 {
+    font-size: 17px;
+    font-weight: 600;
+    color: #1a1a2e;
+    margin: 36px 0 12px;
+    padding-bottom: 6px;
+    border-bottom: 2px solid #e2e8f0;
+  }
+  h3 {
+    font-size: 13px;
+    font-weight: 600;
+    color: #475569;
+    margin: 20px 0 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  p { line-height: 1.65; color: #374151; margin-bottom: 10px; }
+  .diagram-wrap {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 24px;
+    margin: 16px 0 24px;
+    display: flex;
+    justify-content: center;
+    overflow: hidden;
+  }
+  .diagram-wrap .mermaid { max-width: 100%; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin: 12px 0 24px;
+  }
+  th {
+    background: #1e3a5f;
+    color: #ffffff;
+    padding: 8px 12px;
+    text-align: left;
+    font-weight: 600;
+  }
+  td {
+    padding: 7px 12px;
+    border-bottom: 1px solid #e2e8f0;
+    vertical-align: top;
+  }
+  tr:nth-child(even) td { background: #f8fafc; }
+  code {
+    font-family: "SF Mono", Menlo, Monaco, "Courier New", monospace;
+    font-size: 11px;
+    background: #f1f5f9;
+    color: #0f172a;
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .badge-green  { background: #dcfce7; color: #166534; }
+  .badge-blue   { background: #dbeafe; color: #1e40af; }
+  .badge-orange { background: #ffedd5; color: #9a3412; }
+  .badge-purple { background: #ede9fe; color: #5b21b6; }
+  .latency-table td:last-child { font-weight: 600; color: #0f766e; }
+  .divider {
+    border: none;
+    border-top: 1px solid #e2e8f0;
+    margin: 40px 0;
+  }
+  .footer {
+    margin-top: 48px;
+    font-size: 11px;
+    color: #94a3b8;
+    text-align: center;
+  }
+  @media print {
+    body { padding: 32px 40px; }
+    .diagram-wrap { page-break-inside: avoid; }
+    h2 { page-break-after: avoid; }
+  }
+</style>
+</head>
+<body>
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'base',
+    themeVariables: {
+      primaryColor: '#dbeafe',
+      primaryTextColor: '#1e3a5f',
+      primaryBorderColor: '#93c5fd',
+      lineColor: '#64748b',
+      secondaryColor: '#f0fdf4',
+      tertiaryColor: '#fef3c7',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+      fontSize: '13px',
+    },
+    flowchart: { curve: 'basis', padding: 20 },
+  })
+</script>
+
+<h1>DocuMitra — System Architecture</h1>
+<p class="subtitle">RAG chatbot for private PDF corpora &nbsp;·&nbsp; Next.js 14 + FastAPI + pgvector + Anthropic</p>
+
+<!-- ── 1. SYSTEM OVERVIEW ─────────────────────────────────────── -->
+<h2>1. System Overview</h2>
+<p>DocuMitra ingests a private corpus of large PDFs, indexes them in a pgvector store, and answers natural-language questions with citations. The frontend streams answers in real-time via Server-Sent Events; the backend falls back from Anthropic to a local Ollama model when the primary API is unavailable.</p>
+
+<div class="diagram-wrap">
+<div class="mermaid">
+flowchart TB
+    subgraph FE["Browser — Next.js 14 (localhost:3000)"]
+        direction LR
+        CHAT["Chat page\nSSE streaming"]
+        ING_UI["Ingest page\nPDF upload"]
+        RET_UI["Retrieval page\nchunk explorer"]
+    end
+    subgraph BE["FastAPI Backend (localhost:8000)"]
+        direction TB
+        API["main.py"]
+        ING_BE["Ingestion\nextract → chunk → embed"]
+        RET_BE["Retrieval\nsearch → rerank"]
+        GEN_BE["Generation\nllm_client.py"]
+    end
+    subgraph STORE["Storage"]
+        SB[("Supabase\nPostgres + pgvector\nHNSW index")]
+    end
+    subgraph AI_SVC["AI Services"]
+        direction LR
+        ANT["Anthropic API\nclaude-sonnet-4-6\n(primary)"]
+        OLL["Ollama\ngemma4:e4b\n(fallback)"]
+        EMB["bge-small-en-v1.5\nlocal CPU embeddings"]
+        RERANK["cross-encoder\nms-marco-MiniLM-L-6-v2\nlocal reranker"]
+    end
+    FE -- "POST /query (SSE)\nPOST /ingest (multipart)\nGET /chunks" --> API
+    API --> ING_BE
+    API --> RET_BE
+    API --> GEN_BE
+    ING_BE -- "upsert vectors" --> SB
+    RET_BE -- "cosine ANN search" --> SB
+    RET_BE --> RERANK
+    GEN_BE --> ANT
+    GEN_BE -. "on APIError / KeyError" .-> OLL
+    ING_BE --> EMB
+    RET_BE --> EMB
+</div>
+</div>
+
+<!-- ── 2. INGESTION PIPELINE ──────────────────────────────────── -->
+<h2>2. Ingestion Pipeline</h2>
+<p>Each PDF is extracted page-by-page (native text via PyMuPDF; OCR via Tesseract for scanned pages and embedded images), split into overlapping token-bounded chunks, encoded with a local embedding model, and upserted into pgvector. Re-ingestion is idempotent — existing chunk IDs are skipped.</p>
+
+<div class="diagram-wrap">
+<div class="mermaid">
+flowchart LR
+    PDF(["PDF file"])
+    EXT["extract.py\nPyMuPDF native text\n+ Tesseract OCR\nheader/footer strip"]
+    CHK["chunker.py\n500–1000 tokens/chunk\n~20% overlap\nper-chunk language detect"]
+    EMB2["embed.py\nbge-small-en-v1.5\nbatch=64, L2-normalised"]
+    DB2[("pgvector\nchunks table\nembedding dim=384")]
+    PDF --> EXT
+    EXT -- "PageContent list" --> CHK
+    CHK -- "Chunk list" --> EMB2
+    EMB2 -- "upsert (skip existing)" --> DB2
+    EXT -. "scanned / image pages" .-> OCR["Tesseract\nOCR engine"]
+    OCR -. "text" .-> EXT
+</div>
+</div>
+
+<h3>Chunk metadata stored per row</h3>
+<table>
+  <tr><th>Field</th><th>Type</th><th>Description</th></tr>
+  <tr><td><code>chunk_id</code></td><td>text PK</td><td>SHA-256 of pdf_id + filename + page + index (deterministic)</td></tr>
+  <tr><td><code>pdf_id</code></td><td>text</td><td>SHA-256 of file content</td></tr>
+  <tr><td><code>filename</code></td><td>text</td><td>Original filename — used in citations</td></tr>
+  <tr><td><code>page_number</code></td><td>int</td><td>1-based page — used in citations</td></tr>
+  <tr><td><code>text</code></td><td>text</td><td>Chunk text (500–1000 tokens)</td></tr>
+  <tr><td><code>language</code></td><td>text</td><td>ISO 639-1 language code</td></tr>
+  <tr><td><code>bbox</code></td><td>jsonb</td><td>Bounding box (x0, y0, x1, y1) if available</td></tr>
+  <tr><td><code>embedding</code></td><td>vector(384)</td><td>L2-normalised bge-small-en-v1.5 vector</td></tr>
+</table>
+
+<!-- ── 3. QUERY PIPELINE ──────────────────────────────────────── -->
+<h2>3. Query Pipeline</h2>
+<p>A user query passes through four stages: embedding, vector retrieval, optional cross-encoder reranking, and LLM generation. The answer is streamed back via SSE; every claim must be immediately followed by a citation in <code>[filename, p.N]</code> format.</p>
+
+<div class="diagram-wrap">
+<div class="mermaid">
+flowchart LR
+    Q(["User query"])
+    QE["Embed query\nbge-small-en-v1.5\n&lt;100 ms"]
+    VS2["HNSW search\ntop-20 by cosine sim\n&lt;200 ms"]
+    RR2["Cross-encoder rerank\ntop-20 → top-5\n~500 ms (optional)"]
+    GEN2["LLM generation\nAnthropic stream\n1.5–3 s"]
+    ANS(["Answer + citations\n[filename, p.N]"])
+    Q --> QE --> VS2 --> RR2 --> GEN2 --> ANS
+    DB3[("pgvector")] --> VS2
+</div>
+</div>
+
+<h3>Latency budget (2–5 s total)</h3>
+<table class="latency-table">
+  <tr><th>Stage</th><th>Target</th><th>Notes</th></tr>
+  <tr><td>Query embedding</td><td>&lt; 100 ms</td><td>Model kept warm in memory (singleton)</td></tr>
+  <tr><td>HNSW retrieval (top-20)</td><td>&lt; 200 ms</td><td>Supabase <code>match_chunks</code> RPC</td></tr>
+  <tr><td>Cross-encoder rerank</td><td>~ 500 ms</td><td>Optional — skip if over budget</td></tr>
+  <tr><td>LLM generation</td><td>1.5–3 s</td><td>Streamed to reduce perceived latency</td></tr>
+  <tr><td><strong>Total</strong></td><td><strong>2–5 s</strong></td><td>End-to-end including network</td></tr>
+</table>
+
+<!-- ── 4. BACKEND MODULES ─────────────────────────────────────── -->
+<h2>4. Backend Module Dependency Graph</h2>
+<p>All pipeline logic lives in focused single-responsibility modules. <code>main.py</code> is the only entry point — it wires the modules together via FastAPI route handlers.</p>
+
+<div class="diagram-wrap">
+<div class="mermaid">
+graph TD
+    MAIN2["main.py\nFastAPI · 3 endpoints\nCORS · Supabase DI"]
+    EXT2["extract.py\nPyMuPDF + Tesseract"]
+    CHK2["chunker.py\ntoken-bounded chunks"]
+    EMB3["embed.py\nbge singleton · upsert"]
+    VS3["vector_store.py\nmatch_chunks RPC"]
+    RR3["reranker.py\ncross-encoder singleton"]
+    LC["llm_client.py\nAnthropic + Ollama fallback"]
+    PT["prompt_templates.py\nSYSTEM_PROMPT · NO_ANSWER"]
+    ER2["eval_runner.py\np95 · R@k · MRR\ncitation accuracy\nhallucination rate"]
+    MAIN2 --> EXT2
+    MAIN2 --> CHK2
+    MAIN2 --> EMB3
+    MAIN2 --> VS3
+    MAIN2 --> RR3
+    MAIN2 --> LC
+    CHK2 --> EXT2
+    EMB3 --> CHK2
+    VS3 --> EMB3
+    RR3 --> VS3
+    LC --> PT
+    ER2 --> VS3
+    ER2 --> RR3
+    ER2 --> LC
+    ER2 --> PT
+</div>
+</div>
+
+<!-- ── 5. FRONTEND COMPONENT TREE ─────────────────────────────── -->
+<h2>5. Frontend Component Tree</h2>
+<p>The Next.js App Router shell renders a persistent sidebar alongside the active page. Each page imports one focused client component. All backend communication is centralised in <code>lib/api.ts</code>; business logic lives in two hooks.</p>
+
+<div class="diagram-wrap">
+<div class="mermaid">
+graph TD
+    LAY["app/layout.tsx\nSidebar + main slot"]
+    SB2["Sidebar.tsx\nusePathname\nactive-link highlight"]
+    CP2["ChatPanel.tsx\norchestrates chat"]
+    ML2["MessageList.tsx\nbubbles + streaming cursor"]
+    MI2["MessageInput.tsx\nEnter=send · Shift+Enter=newline"]
+    IP2["IngestPanel.tsx\nidle→uploading→done/error"]
+    CH2["ChunksPanel.tsx\nsearch · k selector · cards"]
+    USC2["useStreamingChat\nSSE + localStorage history\nuseRef streaming lock"]
+    UCH2["useChunks\nGET /chunks state"]
+    API2["lib/api.ts\nstreamQuery · ingestFile\ngetChunks · ApiError"]
+    BE2["FastAPI Backend"]
+    LAY --> SB2
+    LAY --> CP2
+    LAY --> IP2
+    LAY --> CH2
+    CP2 --> ML2
+    CP2 --> MI2
+    CP2 --> USC2
+    CH2 --> UCH2
+    USC2 --> API2
+    UCH2 --> API2
+    IP2 --> API2
+    API2 --> BE2
+</div>
+</div>
+
+<!-- ── 6. TECH STACK ───────────────────────────────────────────── -->
+<h2>6. Technology Stack</h2>
+<table>
+  <tr><th>Layer</th><th>Technology</th><th>Purpose</th></tr>
+  <tr><td>Frontend</td><td>Next.js 14 · TypeScript · Tailwind CSS</td><td>Chat UI, ingestion, retrieval visualization</td></tr>
+  <tr><td>Backend</td><td>Python FastAPI · Uvicorn</td><td>REST + SSE API server</td></tr>
+  <tr><td>Vector DB</td><td>Supabase (Postgres + pgvector)</td><td>HNSW cosine similarity search</td></tr>
+  <tr><td>Embeddings</td><td><code>BAAI/bge-small-en-v1.5</code> (sentence-transformers)</td><td>384-dim, CPU-friendly, free</td></tr>
+  <tr><td>Reranker</td><td><code>cross-encoder/ms-marco-MiniLM-L-6-v2</code></td><td>Cross-encoder top-20 → top-5 (optional)</td></tr>
+  <tr><td>LLM (primary)</td><td>Anthropic <code>claude-sonnet-4-6</code></td><td>Answer synthesis with citations</td></tr>
+  <tr><td>LLM (fallback)</td><td>Ollama <code>gemma4:e4b</code></td><td>Automatic fallback on APIError</td></tr>
+  <tr><td>PDF extraction</td><td>PyMuPDF + Tesseract</td><td>Native text + OCR for scanned pages</td></tr>
+  <tr><td>Testing</td><td>pytest (205 tests) · Jest + @testing-library/react (46 tests)</td><td>Full TDD coverage</td></tr>
+</table>
+
+<hr class="divider" />
+<p class="footer">DocuMitra &nbsp;·&nbsp; Generated 2026-06-13 &nbsp;·&nbsp; All models free/open-source except Anthropic API</p>
+
+</body>
+</html>
