@@ -98,6 +98,15 @@ class ExtractionError(Exception):
         super().__init__(f"Failed to extract '{filename}': {cause}")
 
 
+def _tesseract_available() -> bool:
+    """Return True if the tesseract binary is reachable."""
+    try:
+        pytesseract.get_tesseract_version()
+        return True
+    except pytesseract.TesseractNotFoundError:
+        return False
+
+
 def _ocr_page(page: fitz.Page) -> str:
     """Render page as a 300-DPI PNG and return Tesseract OCR text."""
     pixmap = page.get_pixmap(dpi=OCR_DPI)
@@ -173,18 +182,22 @@ def extract_pdf(path: Path) -> ExtractedDocument:
             is_ocr_flags.append(is_ocr)
 
             if is_ocr:
-                try:
+                if _tesseract_available():
                     page_text = _ocr_page(page)
-                except pytesseract.TesseractNotFoundError as e:
-                    raise ExtractionError(
+                else:
+                    log.warning(
+                        "Page %d of '%s' appears scanned but Tesseract is not installed "
+                        "(brew install tesseract). Skipping OCR for this page.",
+                        page.number + 1,
                         filename,
-                        f"Tesseract not installed: {e}. Install with: brew install tesseract",
                     )
+                    page_text = ""
             else:
                 page_text = native_text
-                image_text = _ocr_images(page, doc)
-                if image_text:
-                    page_text = page_text + "\n" + image_text
+                if _tesseract_available():
+                    image_text = _ocr_images(page, doc)
+                    if image_text:
+                        page_text = page_text + "\n" + image_text
 
             raw_texts.append(page_text)
 
