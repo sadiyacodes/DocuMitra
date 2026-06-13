@@ -5,6 +5,7 @@ import os
 from unittest.mock import MagicMock, patch
 
 import anthropic
+import requests
 
 from backend.generation.llm_client import (
     ANTHROPIC_MODEL,
@@ -14,6 +15,7 @@ from backend.generation.llm_client import (
     _generate_ollama,
     generate,
 )
+from backend.generation.prompt_templates import NO_ANSWER_RESPONSE
 from backend.retrieval.vector_store import SearchResult
 
 
@@ -24,6 +26,21 @@ def _make_stream_cm(chunks: list[str]) -> MagicMock:
     cm.__exit__ = MagicMock(return_value=False)
     cm.text_stream = iter(chunks)
     return cm
+
+
+def _make_result(filename: str = "doc.pdf", page: int = 1, text: str = "Some text.") -> SearchResult:
+    """Return a minimal SearchResult for tests that need non-empty results."""
+    return SearchResult(
+        chunk_id="abc123def456abcd",
+        pdf_id="testpdf123456789",
+        filename=filename,
+        page_number=page,
+        text=text,
+        token_count=3,
+        language="en",
+        bbox=None,
+        similarity=0.9,
+    )
 
 
 def test_constants_defined():
@@ -150,7 +167,7 @@ def test_generate_ollama_empty_content_chunks_skipped():
 def test_generate_yields_anthropic_chunks():
     chunks = ["Hello ", "world"]
     with patch("backend.generation.llm_client._generate_anthropic", return_value=iter(chunks)):
-        result = list(generate("query", []))
+        result = list(generate("query", [_make_result()]))
     assert result == chunks
 
 
@@ -163,7 +180,7 @@ def test_generate_falls_back_to_ollama_on_api_error():
 
     with patch("backend.generation.llm_client._generate_anthropic", side_effect=api_error):
         with patch("backend.generation.llm_client._generate_ollama", return_value=iter(fallback_chunks)):
-            result = list(generate("query", []))
+            result = list(generate("query", [_make_result()]))
 
     assert result == fallback_chunks
 
@@ -177,7 +194,7 @@ def test_generate_logs_warning_on_fallback():
     with patch("backend.generation.llm_client._generate_anthropic", side_effect=api_error):
         with patch("backend.generation.llm_client._generate_ollama", return_value=iter([])):
             with patch("backend.generation.llm_client.log") as mock_log:
-                list(generate("query", []))
+                list(generate("query", [_make_result()]))
 
     mock_log.warning.assert_called_once()
 
@@ -206,7 +223,48 @@ def test_generate_does_not_fall_back_on_non_api_error():
     with patch("backend.generation.llm_client._generate_anthropic", side_effect=ValueError("unexpected")):
         with patch("backend.generation.llm_client._generate_ollama", return_value=iter([])) as mock_ollama:
             try:
-                list(generate("query", []))
+                list(generate("query", [_make_result()]))
             except ValueError:
                 pass
     mock_ollama.assert_not_called()
+
+
+# Fix 1: KeyError fallback
+def test_generate_falls_back_to_ollama_on_missing_api_key():
+    fallback_chunks = ["fallback"]
+    with patch("backend.generation.llm_client._generate_anthropic", side_effect=KeyError("ANTHROPIC_API_KEY")):
+        with patch("backend.generation.llm_client._generate_ollama", return_value=iter(fallback_chunks)):
+            result = list(generate("query", [_make_result()]))
+    assert result == fallback_chunks
+
+
+# Fix 2: Ollama RequestException
+def test_generate_ollama_raises_on_connection_error():
+    with patch("requests.post", side_effect=requests.exceptions.ConnectionError("refused")):
+        try:
+            list(_generate_ollama("prompt", "system"))
+            assert False, "expected RequestException"
+        except requests.exceptions.RequestException:
+            pass
+
+
+# Fix 3: Empty results short-circuit
+def test_generate_returns_no_answer_when_results_empty():
+    result = list(generate("query", []))
+    assert result == [NO_ANSWER_RESPONSE]
+
+
+def test_generate_does_not_call_llm_when_results_empty():
+    with patch("backend.generation.llm_client._generate_anthropic") as mock_anth:
+        list(generate("query", []))
+    mock_anth.assert_not_called()
+
+
+# Fix 4: DEMO_MODE guard
+def test_generate_raises_in_demo_mode():
+    with patch.dict("os.environ", {"DEMO_MODE": "true"}):
+        try:
+            list(generate("query", []))
+            assert False, "expected RuntimeError"
+        except RuntimeError as exc:
+            assert "DEMO_MODE" in str(exc)

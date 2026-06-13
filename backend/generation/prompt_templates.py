@@ -3,6 +3,11 @@ from __future__ import annotations
 
 from backend.retrieval.vector_store import SearchResult
 
+NO_ANSWER_RESPONSE = (
+    "There is not enough information in the provided documents "
+    "to answer this question."
+)
+
 SYSTEM_PROMPT = (
     "You are a document Q&A assistant. Answer only from the provided excerpts.\n"
     "Cite every claim immediately after the sentence using [filename, p.N].\n"

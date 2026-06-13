@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from backend.retrieval.vector_store import SearchResult
-from backend.generation.prompt_templates import SYSTEM_PROMPT, build_user_message
+from backend.generation.prompt_templates import NO_ANSWER_RESPONSE, SYSTEM_PROMPT, build_user_message
 
 
 def _make_result(filename: str = "doc.pdf", page: int = 3, text: str = "Some text.") -> SearchResult:
@@ -74,3 +74,12 @@ def test_build_user_message_multiple_results_all_included():
     assert "b.pdf" in msg
     assert "First chunk." in msg
     assert "Second chunk." in msg
+
+
+def test_no_answer_response_is_nonempty_string():
+    assert isinstance(NO_ANSWER_RESPONSE, str)
+    assert len(NO_ANSWER_RESPONSE) > 0
+
+
+def test_no_answer_response_matches_system_prompt():
+    assert "not enough information" in NO_ANSWER_RESPONSE

@@ -9,7 +9,7 @@ from typing import Iterator
 import anthropic
 import requests
 
-from backend.generation.prompt_templates import SYSTEM_PROMPT, build_user_message
+from backend.generation.prompt_templates import NO_ANSWER_RESPONSE, SYSTEM_PROMPT, build_user_message
 from backend.retrieval.vector_store import SearchResult
 
 ANTHROPIC_MODEL = "claude-sonnet-4-6"
@@ -43,12 +43,16 @@ def _generate_ollama(prompt: str, system: str) -> Iterator[str]:
         ],
         "stream": True,
     }
-    with requests.post(url, json=payload, stream=True) as resp:
-        resp.raise_for_status()
-        for line in resp.iter_lines():
-            if line:
-                if chunk := json.loads(line).get("message", {}).get("content", ""):
-                    yield chunk
+    try:
+        with requests.post(url, json=payload, stream=True) as resp:
+            resp.raise_for_status()
+            for line in resp.iter_lines():
+                if line:
+                    if chunk := json.loads(line).get("message", {}).get("content", ""):
+                        yield chunk
+    except requests.exceptions.RequestException as exc:
+        log.error("Ollama request failed: %s", exc)
+        raise
 
 
 def generate(
@@ -56,10 +60,18 @@ def generate(
     results: list[SearchResult],
 ) -> Iterator[str]:
     """Stream an answer with citations; falls back to Ollama if Anthropic fails."""
+    if os.getenv("DEMO_MODE", "false").lower() == "true":
+        raise RuntimeError(
+            "DEMO_MODE is enabled but no response cache is loaded. "
+            "Run scripts/cache_demo.py first."
+        )
+    if not results:
+        yield NO_ANSWER_RESPONSE
+        return
     system = SYSTEM_PROMPT
     prompt = build_user_message(query, results)
     try:
         yield from _generate_anthropic(prompt, system)
-    except anthropic.APIError as exc:
+    except (anthropic.APIError, KeyError) as exc:
         log.warning("Anthropic failed (%s), falling back to Ollama", exc)
         yield from _generate_ollama(prompt, system)
