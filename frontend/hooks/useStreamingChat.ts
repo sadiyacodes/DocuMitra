@@ -16,6 +16,7 @@ export function useStreamingChat() {
   const [messages, setMessages] = useState<Message[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
   const skipNextSave = useRef(false)
+  const isStreamingRef = useRef(false)
 
   useEffect(() => {
     try {
@@ -33,7 +34,10 @@ export function useStreamingChat() {
   }, [messages])
 
   const sendMessage = useCallback(async (query: string) => {
-    if (isStreaming) return
+    if (isStreamingRef.current) return
+
+    isStreamingRef.current = true
+    setIsStreaming(true)
 
     const userMsg: Message = {
       id: crypto.randomUUID(),
@@ -50,7 +54,6 @@ export function useStreamingChat() {
     }
 
     setMessages(prev => [...prev, userMsg, assistantMsg])
-    setIsStreaming(true)
 
     try {
       for await (const chunk of streamQuery(query)) {
@@ -61,9 +64,10 @@ export function useStreamingChat() {
         )
       }
     } finally {
+      isStreamingRef.current = false
       setIsStreaming(false)
     }
-  }, [isStreaming])
+  }, [])
 
   const clearHistory = useCallback(() => {
     skipNextSave.current = true
