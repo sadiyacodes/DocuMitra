@@ -187,3 +187,51 @@ def test_strip_single_page_unchanged():
     pages = ["Only one page, nothing repeats, so nothing is stripped."]
     result = _strip_headers_footers(pages)
     assert result == pages
+
+
+from unittest.mock import MagicMock, patch
+
+from backend.ingestion.extract import OCR_DPI, _ocr_page
+
+
+def test_ocr_page_renders_at_correct_dpi():
+    mock_page = MagicMock()
+    mock_pixmap = MagicMock()
+    mock_pixmap.tobytes.return_value = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
+    mock_page.get_pixmap.return_value = mock_pixmap
+
+    with patch("backend.ingestion.extract.Image.open"):
+        with patch("backend.ingestion.extract.pytesseract.image_to_string", return_value="ocr result"):
+            result = _ocr_page(mock_page)
+
+    mock_page.get_pixmap.assert_called_once_with(dpi=OCR_DPI)
+    assert result == "ocr result"
+
+
+def test_ocr_page_passes_png_bytes_to_image_open():
+    mock_page = MagicMock()
+    mock_pixmap = MagicMock()
+    png_bytes = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
+    mock_pixmap.tobytes.return_value = png_bytes
+    mock_page.get_pixmap.return_value = mock_pixmap
+
+    with patch("backend.ingestion.extract.io.BytesIO") as mock_bytesio:
+        with patch("backend.ingestion.extract.Image.open"):
+            with patch("backend.ingestion.extract.pytesseract.image_to_string", return_value="text"):
+                _ocr_page(mock_page)
+
+    mock_pixmap.tobytes.assert_called_once_with("png")
+    mock_bytesio.assert_called_once_with(png_bytes)
+
+
+def test_ocr_page_uses_lang_eng():
+    mock_page = MagicMock()
+    mock_pixmap = MagicMock()
+    mock_pixmap.tobytes.return_value = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
+    mock_page.get_pixmap.return_value = mock_pixmap
+
+    with patch("backend.ingestion.extract.Image.open") as mock_open:
+        with patch("backend.ingestion.extract.pytesseract.image_to_string", return_value="text") as mock_tess:
+            _ocr_page(mock_page)
+
+    mock_tess.assert_called_once_with(mock_open.return_value, lang="eng")

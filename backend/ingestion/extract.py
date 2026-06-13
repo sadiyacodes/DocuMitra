@@ -96,3 +96,9 @@ class ExtractionError(Exception):
         self.filename = filename
         self.cause = cause
         super().__init__(f"Failed to extract '{filename}': {cause}")
+
+
+def _ocr_page(page: fitz.Page) -> str:
+    pixmap = page.get_pixmap(dpi=OCR_DPI)
+    image = Image.open(io.BytesIO(pixmap.tobytes("png")))
+    return pytesseract.image_to_string(image, lang="eng")
