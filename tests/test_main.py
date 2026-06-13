@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
+from backend.ingestion.extract import ExtractionError
 from backend.main import app, get_supabase
 from backend.retrieval.vector_store import SearchResult
 
@@ -102,3 +103,56 @@ def test_query_skips_rerank_when_disabled():
             with patch("backend.main.generate", return_value=iter(["x"])):
                 client.post("/query", json={"query": "test", "rerank": False})
     mock_r.assert_not_called()
+
+
+# ── POST /ingest ─────────────────────────────────────────────────────────────
+
+def _make_upload(
+    filename: str = "test.pdf",
+    content: bytes = b"PDF content",
+) -> tuple:
+    return ("file", (filename, io.BytesIO(content), "application/pdf"))
+
+
+def test_ingest_returns_pdf_id_filename_and_count():
+    fake_doc = MagicMock()
+    fake_doc.pdf_id = "pdf_abc123"
+    fake_doc.filename = "test.pdf"
+
+    with patch("backend.main.extract_pdf", return_value=fake_doc):
+        with patch("backend.main.chunk_document", return_value=[MagicMock()]):
+            with patch("backend.main.embed_chunks", return_value=7):
+                response = client.post("/ingest", files=[_make_upload()])
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["pdf_id"] == "pdf_abc123"
+    assert data["filename"] == "test.pdf"
+    assert data["chunks_added"] == 7
+
+
+def test_ingest_422_on_extraction_error():
+    with patch(
+        "backend.main.extract_pdf",
+        side_effect=ExtractionError("bad.pdf", "corrupt file"),
+    ):
+        response = client.post("/ingest", files=[_make_upload("bad.pdf", b"garbage")])
+
+    assert response.status_code == 422
+    assert "bad.pdf" in response.json()["detail"]
+
+
+def test_ingest_calls_full_pipeline_in_order():
+    fake_doc = MagicMock()
+    fake_doc.pdf_id = "p1"
+    fake_doc.filename = "doc.pdf"
+    fake_chunks = [MagicMock(), MagicMock()]
+
+    with patch("backend.main.extract_pdf", return_value=fake_doc) as mock_extract:
+        with patch("backend.main.chunk_document", return_value=fake_chunks) as mock_chunk:
+            with patch("backend.main.embed_chunks", return_value=2) as mock_embed:
+                client.post("/ingest", files=[_make_upload()])
+
+    mock_extract.assert_called_once()
+    mock_chunk.assert_called_once_with(fake_doc)
+    mock_embed.assert_called_once_with(fake_chunks, mock_supabase)

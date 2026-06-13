@@ -56,3 +56,30 @@ def query_endpoint(req: QueryRequest, client: Client = Depends(get_supabase)):
         _sse_generator(req.query, client, req.rerank),
         media_type="text/event-stream",
     )
+
+
+class IngestResponse(BaseModel):
+    pdf_id: str
+    filename: str
+    chunks_added: int
+
+
+@app.post("/ingest", response_model=IngestResponse)
+async def ingest_endpoint(
+    file: UploadFile,
+    client: Client = Depends(get_supabase),
+) -> IngestResponse:
+    content = await file.read()
+    suffix = Path(file.filename or "upload.pdf").suffix or ".pdf"
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        tmp.write(content)
+        tmp_path = Path(tmp.name)
+    try:
+        doc = extract_pdf(tmp_path)
+    except ExtractionError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    finally:
+        tmp_path.unlink(missing_ok=True)
+    chunks = chunk_document(doc)
+    added = embed_chunks(chunks, client)
+    return IngestResponse(pdf_id=doc.pdf_id, filename=doc.filename, chunks_added=added)
