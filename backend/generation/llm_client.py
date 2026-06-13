@@ -13,7 +13,7 @@ from backend.generation.prompt_templates import SYSTEM_PROMPT, build_user_messag
 from backend.retrieval.vector_store import SearchResult
 
 ANTHROPIC_MODEL = "claude-sonnet-4-6"
-OLLAMA_MODEL    = "gemma4:4b"
+OLLAMA_MODEL    = "gemma4:e4b"
 MAX_TOKENS      = 1024
 
 log = logging.getLogger(__name__)

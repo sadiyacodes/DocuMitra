@@ -26,7 +26,7 @@ def _make_stream_cm(chunks: list[str]) -> MagicMock:
 
 def test_constants_defined():
     assert ANTHROPIC_MODEL == "claude-sonnet-4-6"
-    assert OLLAMA_MODEL == "gemma4:4b"
+    assert OLLAMA_MODEL == "gemma4:e4b"
     assert MAX_TOKENS == 1024
 
 
