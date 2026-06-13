@@ -17,6 +17,11 @@ app.dependency_overrides[get_supabase] = lambda: mock_supabase
 client = TestClient(app)
 
 
+@pytest.fixture(autouse=True)
+def _reset_mocks():
+    mock_supabase.reset_mock()
+
+
 def _make_result(
     filename: str = "doc.pdf",
     page: int = 1,
