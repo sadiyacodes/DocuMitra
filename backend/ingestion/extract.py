@@ -39,6 +39,10 @@ def _normalize_text(text: str) -> str:
     return text.strip()
 
 
+def _detect_scanned(text: str) -> bool:
+    return len(text.strip()) < MIN_NATIVE_CHARS
+
+
 @dataclass
 class PageContent:
     pdf_id: str

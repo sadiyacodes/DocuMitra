@@ -106,3 +106,31 @@ def test_normalize_nfc_unicode():
 
 def test_normalize_strips_leading_trailing_whitespace():
     assert _normalize_text("  hello  ") == "hello"
+
+
+from backend.ingestion.extract import MIN_NATIVE_CHARS, _detect_scanned
+
+
+def test_detect_scanned_empty_string():
+    assert _detect_scanned("") is True
+
+
+def test_detect_scanned_whitespace_only():
+    assert _detect_scanned("   \n\t  ") is True
+
+
+def test_detect_scanned_below_threshold():
+    assert _detect_scanned("x" * (MIN_NATIVE_CHARS - 1)) is True
+
+
+def test_detect_scanned_at_threshold():
+    assert _detect_scanned("x" * MIN_NATIVE_CHARS) is False
+
+
+def test_detect_scanned_above_threshold():
+    assert _detect_scanned("x" * (MIN_NATIVE_CHARS + 1)) is False
+
+
+def test_detect_scanned_native_page():
+    long_text = "This is a page with plenty of native text content for extraction." * 3
+    assert _detect_scanned(long_text) is False
