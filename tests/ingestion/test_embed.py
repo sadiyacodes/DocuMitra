@@ -71,3 +71,99 @@ def test_fetch_existing_ids_selects_chunk_id_column():
     client = _make_client([])
     _fetch_existing_ids({"abc"}, client)
     client.table.return_value.select.assert_called_once_with("chunk_id")
+
+
+import numpy as np
+
+from backend.ingestion.chunker import Chunk
+from backend.ingestion.embed import TABLE_NAME, _upsert_rows
+
+
+def _make_chunk(
+    chunk_id: str = "testchunk00000001",
+    bbox: tuple | None = (0.0, 0.0, 595.0, 842.0),
+) -> Chunk:
+    return Chunk(
+        chunk_id=chunk_id,
+        pdf_id="testpdf123456789",
+        filename="doc.pdf",
+        page_number=1,
+        text="This is some chunk text.",
+        token_count=5,
+        language="en",
+        bbox=bbox,
+    )
+
+
+def _make_upsert_client() -> MagicMock:
+    mock = MagicMock()
+    mock.table.return_value.upsert.return_value.execute.return_value = MagicMock()
+    return mock
+
+
+def test_upsert_rows_calls_table_upsert_execute():
+    chunk = _make_chunk()
+    vectors = np.zeros((1, 384))
+    client = _make_upsert_client()
+    _upsert_rows([chunk], vectors, client)
+    client.table.assert_called_once_with(TABLE_NAME)
+    client.table.return_value.upsert.assert_called_once()
+    client.table.return_value.upsert.return_value.execute.assert_called_once()
+
+
+def test_upsert_rows_row_contains_all_chunk_fields():
+    chunk = _make_chunk()
+    vectors = np.ones((1, 384))
+    client = _make_upsert_client()
+    _upsert_rows([chunk], vectors, client)
+    rows = client.table.return_value.upsert.call_args[0][0]
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["chunk_id"] == chunk.chunk_id
+    assert row["pdf_id"] == chunk.pdf_id
+    assert row["filename"] == chunk.filename
+    assert row["page_number"] == chunk.page_number
+    assert row["text"] == chunk.text
+    assert row["token_count"] == chunk.token_count
+    assert row["language"] == chunk.language
+
+
+def test_upsert_rows_embedding_is_list_of_floats():
+    chunk = _make_chunk()
+    vectors = np.ones((1, 384)) * 0.5
+    client = _make_upsert_client()
+    _upsert_rows([chunk], vectors, client)
+    rows = client.table.return_value.upsert.call_args[0][0]
+    emb = rows[0]["embedding"]
+    assert isinstance(emb, list)
+    assert len(emb) == 384
+    assert all(isinstance(v, float) for v in emb)
+
+
+def test_upsert_rows_bbox_tuple_stored_as_list():
+    chunk = _make_chunk(bbox=(0.0, 0.0, 595.0, 842.0))
+    vectors = np.zeros((1, 384))
+    client = _make_upsert_client()
+    _upsert_rows([chunk], vectors, client)
+    rows = client.table.return_value.upsert.call_args[0][0]
+    assert rows[0]["bbox"] == [0.0, 0.0, 595.0, 842.0]
+
+
+def test_upsert_rows_none_bbox_stored_as_none():
+    chunk = _make_chunk(bbox=None)
+    vectors = np.zeros((1, 384))
+    client = _make_upsert_client()
+    _upsert_rows([chunk], vectors, client)
+    rows = client.table.return_value.upsert.call_args[0][0]
+    assert rows[0]["bbox"] is None
+
+
+def test_upsert_rows_multiple_chunks():
+    chunks = [_make_chunk(f"chunk{i:016d}") for i in range(3)]
+    vectors = np.zeros((3, 384))
+    client = _make_upsert_client()
+    _upsert_rows(chunks, vectors, client)
+    rows = client.table.return_value.upsert.call_args[0][0]
+    assert len(rows) == 3
+    assert rows[0]["chunk_id"] == "chunk0000000000000000"
+    assert rows[2]["chunk_id"] == "chunk0000000000000002"
