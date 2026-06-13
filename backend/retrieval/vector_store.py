@@ -4,7 +4,6 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
-import numpy as np
 from sentence_transformers import SentenceTransformer
 from supabase import Client
 
@@ -46,6 +45,7 @@ def search(
         {"query_embedding": vector.tolist(), "match_count": k},
     ).execute()
 
+    log.debug("match_chunks returned %d rows for k=%d", len(resp.data), k)
     return [
         SearchResult(
             chunk_id=row["chunk_id"],
