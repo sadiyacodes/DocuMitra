@@ -11,6 +11,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from supabase import Client, create_client
@@ -25,6 +26,13 @@ from backend.retrieval.vector_store import search
 log = logging.getLogger(__name__)
 
 app = FastAPI(title="DocuMitra")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @lru_cache
