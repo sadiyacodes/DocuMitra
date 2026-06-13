@@ -78,5 +78,5 @@ def _citation_accuracy(answer: str, results: list[SearchResult]) -> float:
     return sum(1 for c in citations if c in grounded) / len(citations)
 
 
-def run_eval(queries, client, k: int = 20, use_rerank: bool = True) -> "EvalReport":
+def run_eval(queries: list[EvalQuery], client: Client, k: int = 20, use_rerank: bool = True) -> EvalReport:
     raise NotImplementedError
