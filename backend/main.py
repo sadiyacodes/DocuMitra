@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import tempfile
+from collections.abc import Iterator
 from functools import lru_cache
 from pathlib import Path
 
@@ -40,7 +41,7 @@ class QueryRequest(BaseModel):
     rerank: bool = True
 
 
-def _sse_generator(query: str, client: Client, rerank_enabled: bool):
+def _sse_generator(query: str, client: Client, rerank_enabled: bool) -> Iterator[str]:
     results = search(query, client)
     if rerank_enabled:
         results = rerank(query, results)
