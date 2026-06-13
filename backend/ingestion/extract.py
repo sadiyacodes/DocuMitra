@@ -22,6 +22,23 @@ OCR_DPI = 300
 log = logging.getLogger(__name__)
 
 
+def _normalize_text(text: str) -> str:
+    text = text.replace("\x00", "")
+    text = text.replace("­", "")
+    for ligature, replacement in (
+        ("ﬁ", "fi"),
+        ("ﬂ", "fl"),
+        ("ﬀ", "ff"),
+        ("ﬃ", "ffi"),
+        ("ﬄ", "ffl"),
+    ):
+        text = text.replace(ligature, replacement)
+    text = unicodedata.normalize("NFC", text)
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
 @dataclass
 class PageContent:
     pdf_id: str
