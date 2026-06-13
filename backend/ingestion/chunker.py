@@ -126,3 +126,24 @@ def _chunk_page(
         ))
 
     return chunks
+
+
+def _get_tokenizer() -> AutoTokenizer:
+    """Lazy singleton: load the bge-small tokenizer once and keep it warm."""
+    global _tokenizer
+    if _tokenizer is None:
+        _tokenizer = AutoTokenizer.from_pretrained(TOKENIZER_MODEL)
+    return _tokenizer
+
+
+def chunk_document(doc: ExtractedDocument) -> list[Chunk]:
+    """Split all pages of an extracted document into overlapping chunks.
+
+    Returns a list of Chunk objects aggregated from all pages.
+    Empty pages (whitespace-only text) are skipped.
+    """
+    tokenizer = _get_tokenizer()
+    chunks: list[Chunk] = []
+    for page in doc.pages:
+        chunks.extend(_chunk_page(page, tokenizer))
+    return chunks

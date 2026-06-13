@@ -4,8 +4,8 @@ from unittest.mock import MagicMock, patch
 
 from langdetect import LangDetectException
 
-from backend.ingestion.chunker import Chunk, _chunk_page, _count_tokens, _detect_language, _split_sentences
-from backend.ingestion.extract import PageContent
+from backend.ingestion.chunker import Chunk, _chunk_page, _count_tokens, _detect_language, _split_sentences, chunk_document
+from backend.ingestion.extract import PageContent, ExtractedDocument
 
 
 def test_chunk_fields():
@@ -218,3 +218,54 @@ def test_chunk_page_oversized_sentence_truncated_to_max_tokens():
     page = _make_page("One Two Three Four Five Six Seven Eight Nine Ten.")
     chunks = _chunk_page(page, mock, max_tokens=5, overlap_tokens=2)
     assert chunks[0].token_count <= 5
+
+
+def _make_doc(pages: list[PageContent]) -> ExtractedDocument:
+    return ExtractedDocument(pdf_id="testpdf1234567", filename="test.pdf", pages=pages)
+
+
+def test_chunk_document_empty_pages_returns_empty():
+    with patch("backend.ingestion.chunker._get_tokenizer", return_value=_word_tokenizer()):
+        result = chunk_document(_make_doc([]))
+    assert result == []
+
+
+def test_chunk_document_returns_chunks_from_all_pages():
+    pages = [
+        _make_page("Hello world. How are you?", page_number=1),
+        _make_page("Second page has content too.", page_number=2),
+    ]
+    with patch("backend.ingestion.chunker._get_tokenizer", return_value=_word_tokenizer()):
+        chunks = chunk_document(_make_doc(pages))
+    assert len(chunks) == 2
+    assert chunks[0].page_number == 1
+    assert chunks[1].page_number == 2
+
+
+def test_chunk_document_skips_empty_page_text():
+    pages = [
+        _make_page("", page_number=1),
+        _make_page("This page has real content.", page_number=2),
+    ]
+    with patch("backend.ingestion.chunker._get_tokenizer", return_value=_word_tokenizer()):
+        chunks = chunk_document(_make_doc(pages))
+    assert len(chunks) == 1
+    assert chunks[0].page_number == 2
+
+
+def test_chunk_document_chunk_ids_are_unique():
+    pages = [
+        _make_page("First page sentence one. First page sentence two.", page_number=1),
+        _make_page("Second page sentence one. Second page sentence two.", page_number=2),
+    ]
+    with patch("backend.ingestion.chunker._get_tokenizer", return_value=_word_tokenizer()):
+        chunks = chunk_document(_make_doc(pages))
+    ids = [c.chunk_id for c in chunks]
+    assert len(ids) == len(set(ids))
+
+
+def test_chunk_document_returns_list_of_chunk():
+    pages = [_make_page("Some text here.")]
+    with patch("backend.ingestion.chunker._get_tokenizer", return_value=_word_tokenizer()):
+        chunks = chunk_document(_make_doc(pages))
+    assert all(isinstance(c, Chunk) for c in chunks)
