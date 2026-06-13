@@ -235,3 +235,82 @@ def test_ocr_page_uses_lang_eng():
             _ocr_page(mock_page)
 
     mock_tess.assert_called_once_with(mock_open.return_value, lang="eng")
+
+
+import logging
+
+from backend.ingestion.extract import _ocr_images
+
+
+def test_ocr_images_empty_when_no_images():
+    mock_page = MagicMock()
+    mock_doc = MagicMock()
+    mock_page.get_images.return_value = []
+    assert _ocr_images(mock_page, MagicMock()) == ""
+
+
+def test_ocr_images_extracts_and_ocrs_single_image():
+    mock_page = MagicMock()
+    mock_doc = MagicMock()
+    mock_page.get_images.return_value = [(42, 0, 0, 0, 0, "", "", 0)]
+
+    mock_pixmap = MagicMock()
+    mock_pixmap.tobytes.return_value = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
+
+    with patch("backend.ingestion.extract.fitz.Pixmap", return_value=mock_pixmap):
+        with patch("backend.ingestion.extract.Image.open"):
+            with patch("backend.ingestion.extract.pytesseract.image_to_string", return_value="diagram label"):
+                result = _ocr_images(mock_page, mock_doc)
+
+    assert result == "diagram label"
+
+
+def test_ocr_images_joins_multiple_images_with_newline():
+    mock_page = MagicMock()
+    mock_doc = MagicMock()
+    mock_page.get_images.return_value = [
+        (1, 0, 0, 0, 0, "", "", 0),
+        (2, 0, 0, 0, 0, "", "", 0),
+    ]
+
+    mock_pixmap = MagicMock()
+    mock_pixmap.tobytes.return_value = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
+
+    with patch("backend.ingestion.extract.fitz.Pixmap", return_value=mock_pixmap):
+        with patch("backend.ingestion.extract.Image.open"):
+            with patch(
+                "backend.ingestion.extract.pytesseract.image_to_string",
+                side_effect=["text one", "text two"],
+            ):
+                result = _ocr_images(mock_page, mock_doc)
+
+    assert result == "text one\ntext two"
+
+
+def test_ocr_images_skips_failed_image_with_warning(caplog):
+    mock_page = MagicMock()
+    mock_doc = MagicMock()
+    mock_page.get_images.return_value = [(99, 0, 0, 0, 0, "", "", 0)]
+
+    with patch("backend.ingestion.extract.fitz.Pixmap", side_effect=RuntimeError("bad image")):
+        with caplog.at_level(logging.WARNING, logger="backend.ingestion.extract"):
+            result = _ocr_images(mock_page, mock_doc)
+
+    assert result == ""
+    assert "99" in caplog.text
+
+
+def test_ocr_images_skips_blank_ocr_result():
+    mock_page = MagicMock()
+    mock_doc = MagicMock()
+    mock_page.get_images.return_value = [(10, 0, 0, 0, 0, "", "", 0)]
+
+    mock_pixmap = MagicMock()
+    mock_pixmap.tobytes.return_value = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
+
+    with patch("backend.ingestion.extract.fitz.Pixmap", return_value=mock_pixmap):
+        with patch("backend.ingestion.extract.Image.open"):
+            with patch("backend.ingestion.extract.pytesseract.image_to_string", return_value="   "):
+                result = _ocr_images(mock_page, mock_doc)
+
+    assert result == ""

@@ -102,3 +102,18 @@ def _ocr_page(page: fitz.Page) -> str:
     pixmap = page.get_pixmap(dpi=OCR_DPI)
     image = Image.open(io.BytesIO(pixmap.tobytes("png")))
     return pytesseract.image_to_string(image, lang="eng")
+
+
+def _ocr_images(page: fitz.Page, doc: fitz.Document) -> str:
+    texts: list[str] = []
+    for img_info in page.get_images(full=True):
+        xref = img_info[0]
+        try:
+            pixmap = fitz.Pixmap(doc, xref)
+            image = Image.open(io.BytesIO(pixmap.tobytes("png")))
+            text = pytesseract.image_to_string(image)
+            if text.strip():
+                texts.append(text.strip())
+        except Exception as e:
+            log.warning("Failed to OCR image xref=%d: %s", xref, e)
+    return "\n".join(texts)
