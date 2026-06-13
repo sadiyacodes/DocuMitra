@@ -87,7 +87,7 @@ async def ingest_endpoint(
         tmp.write(content)
         tmp_path = Path(tmp.name)
     try:
-        doc = extract_pdf(tmp_path)
+        doc = extract_pdf(tmp_path, filename=file.filename or tmp_path.name)
     except ExtractionError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     finally:

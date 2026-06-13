@@ -132,7 +132,7 @@ def _ocr_images(page: fitz.Page, doc: fitz.Document) -> str:
     return "\n".join(texts)
 
 
-def extract_pdf(path: Path) -> ExtractedDocument:
+def extract_pdf(path: Path, filename: str | None = None) -> ExtractedDocument:
     """Extract text from a PDF file, using native text or OCR as appropriate.
 
     Reads each page, detects scanned pages, strips repeated headers/footers,
@@ -141,6 +141,7 @@ def extract_pdf(path: Path) -> ExtractedDocument:
 
     Args:
         path: Filesystem path to the PDF file.
+        filename: Original filename to store in metadata. Defaults to path.name.
 
     Returns:
         ExtractedDocument with pdf_id, filename, and list of PageContent.
@@ -150,7 +151,7 @@ def extract_pdf(path: Path) -> ExtractedDocument:
     """
     file_bytes = path.read_bytes()
     pdf_id = hashlib.sha256(file_bytes).hexdigest()[:16]
-    filename = path.name
+    filename = filename or path.name
 
     try:
         doc = fitz.open(str(path))
