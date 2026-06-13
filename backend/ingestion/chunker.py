@@ -15,7 +15,7 @@ from backend.ingestion.extract import ExtractedDocument, PageContent
 DetectorFactory.seed = 0
 
 CHUNK_MAX_TOKENS = 1000
-CHUNK_MIN_TOKENS = 500
+CHUNK_MIN_TOKENS = 500  # informational target; sub-minimum chunks (e.g. short last page) are kept as-is
 OVERLAP_TOKENS = 200
 TOKENIZER_MODEL = "BAAI/bge-small-en-v1.5"
 
@@ -59,6 +59,12 @@ def _chunk_page(
     max_tokens: int = CHUNK_MAX_TOKENS,
     overlap_tokens: int = OVERLAP_TOKENS,
 ) -> list[Chunk]:
+    """Split a single page into overlapping token-bounded chunks.
+
+    Greedily accumulates sentences up to max_tokens, then flushes. Carries
+    the tail sentences (up to overlap_tokens) into the next chunk. Sentences
+    exceeding max_tokens are truncated by the tokenizer. Returns [] for empty pages.
+    """
     if not page.text.strip():
         return []
 
@@ -74,12 +80,12 @@ def _chunk_page(
         if sentence_tokens > max_tokens:
             ids = tokenizer.encode(sentence, add_special_tokens=False)[:max_tokens]
             sentence = tokenizer.decode(ids)
-            sentence_tokens = max_tokens
+            sentence_tokens = _count_tokens(sentence, tokenizer)
 
         if buffer and buffer_tokens + sentence_tokens > max_tokens:
             chunk_text = " ".join(buffer)
             chunk_id = hashlib.sha256(
-                f"{page.pdf_id}:{page.page_number}:{chunk_index}".encode()
+                f"{page.pdf_id}:{page.filename}:{page.page_number}:{chunk_index}".encode()
             ).hexdigest()[:16]
             chunks.append(Chunk(
                 chunk_id=chunk_id,
