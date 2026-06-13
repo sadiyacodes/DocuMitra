@@ -71,6 +71,11 @@ def _chunk_page(
     for sentence in sentences:
         sentence_tokens = _count_tokens(sentence, tokenizer)
 
+        if sentence_tokens > max_tokens:
+            ids = tokenizer.encode(sentence, add_special_tokens=False)[:max_tokens]
+            sentence = tokenizer.decode(ids)
+            sentence_tokens = max_tokens
+
         if buffer and buffer_tokens + sentence_tokens > max_tokens:
             chunk_text = " ".join(buffer)
             chunk_id = hashlib.sha256(

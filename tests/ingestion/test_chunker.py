@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from backend.ingestion.chunker import Chunk
+from unittest.mock import MagicMock, patch
+
+from langdetect import LangDetectException
+
+from backend.ingestion.chunker import Chunk, _chunk_page, _count_tokens, _detect_language, _split_sentences
+from backend.ingestion.extract import PageContent
 
 
 def test_chunk_fields():
@@ -38,9 +43,6 @@ def test_chunk_bbox_none():
     assert chunk.bbox is None
 
 
-from backend.ingestion.chunker import _split_sentences
-
-
 def test_split_sentences_basic():
     result = _split_sentences("Hello world. How are you? I am fine!")
     assert result == ["Hello world.", "How are you?", "I am fine!"]
@@ -66,11 +68,6 @@ def test_split_sentences_preserves_sentence_text():
     assert len(result) >= 1
 
 
-from unittest.mock import MagicMock
-
-from backend.ingestion.chunker import _count_tokens
-
-
 def test_count_tokens_calls_encode_without_special_tokens():
     mock_tokenizer = MagicMock()
     mock_tokenizer.encode.return_value = [1, 2, 3, 4, 5]
@@ -89,13 +86,6 @@ def test_count_tokens_returns_int():
     mock_tokenizer = MagicMock()
     mock_tokenizer.encode.return_value = [10, 20]
     assert isinstance(_count_tokens("hi", mock_tokenizer), int)
-
-
-from unittest.mock import patch
-
-from langdetect import LangDetectException
-
-from backend.ingestion.chunker import _detect_language
 
 
 def test_detect_language_english():
@@ -118,10 +108,6 @@ def test_detect_language_too_short_returns_unknown():
 def test_detect_language_returns_string():
     text = "Enough text for detection to work without raising an exception here."
     assert isinstance(_detect_language(text), str)
-
-
-from backend.ingestion.chunker import Chunk, _chunk_page
-from backend.ingestion.extract import PageContent
 
 
 def _word_tokenizer() -> MagicMock:
@@ -221,3 +207,14 @@ def test_chunk_page_language_field_is_string():
     chunks = _chunk_page(page, _word_tokenizer(), max_tokens=100, overlap_tokens=10)
     assert isinstance(chunks[0].language, str)
     assert len(chunks[0].language) > 0
+
+
+def test_chunk_page_oversized_sentence_truncated_to_max_tokens():
+    # A sentence with 10 words (10 tokens) when max_tokens=5 must be truncated
+    mock = MagicMock()
+    # encode returns ids, decode returns truncated text
+    mock.encode.side_effect = lambda text, **kwargs: list(range(len(text.split())))
+    mock.decode.side_effect = lambda ids: " ".join(str(i) for i in ids)
+    page = _make_page("One Two Three Four Five Six Seven Eight Nine Ten.")
+    chunks = _chunk_page(page, mock, max_tokens=5, overlap_tokens=2)
+    assert chunks[0].token_count <= 5
