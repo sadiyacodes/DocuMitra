@@ -30,6 +30,10 @@ def _split_sentences(text: str) -> list[str]:
     return [s for s in _SENTENCE_RE.split(text) if s.strip()]
 
 
+def _count_tokens(text: str, tokenizer: AutoTokenizer) -> int:
+    return len(tokenizer.encode(text, add_special_tokens=False))
+
+
 @dataclass
 class Chunk:
     chunk_id: str

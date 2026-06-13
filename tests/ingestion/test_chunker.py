@@ -64,3 +64,28 @@ def test_split_sentences_preserves_sentence_text():
     result = _split_sentences("Revenue was $4.2 billion. Costs rose 3%.")
     assert all(isinstance(s, str) for s in result)
     assert len(result) >= 1
+
+
+from unittest.mock import MagicMock
+
+from backend.ingestion.chunker import _count_tokens
+
+
+def test_count_tokens_calls_encode_without_special_tokens():
+    mock_tokenizer = MagicMock()
+    mock_tokenizer.encode.return_value = [1, 2, 3, 4, 5]
+    result = _count_tokens("hello world test", mock_tokenizer)
+    assert result == 5
+    mock_tokenizer.encode.assert_called_once_with("hello world test", add_special_tokens=False)
+
+
+def test_count_tokens_empty_string():
+    mock_tokenizer = MagicMock()
+    mock_tokenizer.encode.return_value = []
+    assert _count_tokens("", mock_tokenizer) == 0
+
+
+def test_count_tokens_returns_int():
+    mock_tokenizer = MagicMock()
+    mock_tokenizer.encode.return_value = [10, 20]
+    assert isinstance(_count_tokens("hi", mock_tokenizer), int)
