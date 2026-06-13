@@ -23,6 +23,12 @@ log = logging.getLogger(__name__)
 
 _tokenizer: AutoTokenizer | None = None
 
+_SENTENCE_RE = re.compile(r"(?<=[.!?])\s+")
+
+
+def _split_sentences(text: str) -> list[str]:
+    return [s for s in _SENTENCE_RE.split(text) if s.strip()]
+
 
 @dataclass
 class Chunk:

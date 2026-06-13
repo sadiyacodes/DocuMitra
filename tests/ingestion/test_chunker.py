@@ -36,3 +36,31 @@ def test_chunk_bbox_none():
         bbox=None,
     )
     assert chunk.bbox is None
+
+
+from backend.ingestion.chunker import _split_sentences
+
+
+def test_split_sentences_basic():
+    result = _split_sentences("Hello world. How are you? I am fine!")
+    assert result == ["Hello world.", "How are you?", "I am fine!"]
+
+
+def test_split_sentences_empty_string():
+    assert _split_sentences("") == []
+
+
+def test_split_sentences_single_sentence():
+    assert _split_sentences("Just one sentence.") == ["Just one sentence."]
+
+
+def test_split_sentences_filters_blank_fragments():
+    result = _split_sentences("Hello.   ")
+    assert all(s.strip() for s in result)
+    assert len(result) == 1
+
+
+def test_split_sentences_preserves_sentence_text():
+    result = _split_sentences("Revenue was $4.2 billion. Costs rose 3%.")
+    assert all(isinstance(s, str) for s in result)
+    assert len(result) >= 1
