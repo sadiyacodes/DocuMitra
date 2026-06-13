@@ -56,3 +56,30 @@ def _upsert_rows(
         for i, c in enumerate(chunks)
     ]
     client.table(TABLE_NAME).upsert(rows).execute()
+
+
+def embed_chunks(
+    chunks: list[Chunk],
+    client: Client,
+    model: SentenceTransformer | None = None,
+) -> int:
+    """Encode new chunks and upsert to Supabase. Returns count of newly stored chunks."""
+    if not chunks:
+        return 0
+
+    if model is None:
+        model = _get_model()
+
+    existing_ids = _fetch_existing_ids({c.chunk_id for c in chunks}, client)
+    new_chunks = [c for c in chunks if c.chunk_id not in existing_ids]
+
+    if not new_chunks:
+        return 0
+
+    vectors = model.encode(
+        [c.text for c in new_chunks],
+        batch_size=BATCH_SIZE,
+        normalize_embeddings=True,
+    )
+    _upsert_rows(new_chunks, vectors, client)
+    return len(new_chunks)
