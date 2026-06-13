@@ -278,3 +278,25 @@ def test_embed_chunks_uses_lazy_singleton_when_model_not_provided():
     with patch("backend.ingestion.embed._get_model", return_value=mock_model):
         embed_chunks([chunk], client)
     mock_model.encode.assert_called_once()
+
+
+from backend.ingestion.embed import BATCH_SIZE, ID_BATCH_SIZE
+
+
+def test_fetch_existing_ids_batches_large_input():
+    # Create IDs exceeding ID_BATCH_SIZE to force multiple batches
+    many_ids = {f"chunk{i:016d}" for i in range(ID_BATCH_SIZE + 10)}
+    client = _make_client([])  # all absent
+    result = _fetch_existing_ids(many_ids, client)
+    # Should have made 2 calls to client.table (two batches)
+    assert client.table.call_count == 2
+    assert result == set()
+
+
+def test_upsert_rows_batches_large_input():
+    # BATCH_SIZE + 1 chunks → must produce 2 upsert calls
+    chunks = [_make_chunk(f"chunk{i:016d}") for i in range(BATCH_SIZE + 1)]
+    vectors = np.zeros((BATCH_SIZE + 1, 384))
+    client = _make_upsert_client()
+    _upsert_rows(chunks, vectors, client)
+    assert client.table.return_value.upsert.call_count == 2

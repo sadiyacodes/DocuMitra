@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 
 import numpy as np
 from sentence_transformers import SentenceTransformer
@@ -13,26 +14,40 @@ EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
 EMBEDDING_DIM = 384
 TABLE_NAME = "chunks"
 BATCH_SIZE = 64
+ID_BATCH_SIZE = 500
 
 log = logging.getLogger(__name__)
 
 _model: SentenceTransformer | None = None
+_model_lock = threading.Lock()
 
 
 def _get_model() -> SentenceTransformer:
     """Lazy singleton: load bge-small-en-v1.5 once and keep it warm."""
     global _model
     if _model is None:
-        _model = SentenceTransformer(EMBEDDING_MODEL)
+        with _model_lock:
+            if _model is None:
+                _model = SentenceTransformer(EMBEDDING_MODEL)
     return _model
 
 
 def _fetch_existing_ids(ids: set[str], client: Client) -> set[str]:
-    """Return the subset of ids already present in pgvector."""
+    """Return the subset of ids already present in pgvector, batched to avoid URL limits."""
     if not ids:
         return set()
-    resp = client.table(TABLE_NAME).select("chunk_id").in_("chunk_id", list(ids)).execute()
-    return {row["chunk_id"] for row in resp.data}
+    id_list = list(ids)
+    existing: set[str] = set()
+    for start in range(0, len(id_list), ID_BATCH_SIZE):
+        batch = id_list[start : start + ID_BATCH_SIZE]
+        resp = (
+            client.table(TABLE_NAME)
+            .select("chunk_id")
+            .in_("chunk_id", batch)
+            .execute()
+        )
+        existing.update(row["chunk_id"] for row in resp.data)
+    return existing
 
 
 def _upsert_rows(
@@ -40,7 +55,7 @@ def _upsert_rows(
     vectors: np.ndarray,
     client: Client,
 ) -> None:
-    """Build row dicts and upsert to Supabase."""
+    """Build row dicts and upsert to Supabase in batches."""
     rows = [
         {
             "chunk_id":    c.chunk_id,
@@ -55,7 +70,8 @@ def _upsert_rows(
         }
         for i, c in enumerate(chunks)
     ]
-    client.table(TABLE_NAME).upsert(rows).execute()
+    for start in range(0, len(rows), BATCH_SIZE):
+        client.table(TABLE_NAME).upsert(rows[start : start + BATCH_SIZE]).execute()
 
 
 def embed_chunks(
