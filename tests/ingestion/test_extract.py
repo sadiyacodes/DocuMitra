@@ -134,3 +134,56 @@ def test_detect_scanned_above_threshold():
 def test_detect_scanned_native_page():
     long_text = "This is a page with plenty of native text content for extraction." * 3
     assert _detect_scanned(long_text) is False
+
+
+from backend.ingestion.extract import _strip_headers_footers
+
+
+def test_strip_headers_footers_empty():
+    assert _strip_headers_footers([]) == []
+
+
+def test_strip_removes_repeated_header_and_footer():
+    pages = [
+        "HEADER\nPage one content here.\nFOOTER",
+        "HEADER\nPage two content here.\nFOOTER",
+        "HEADER\nPage three content here.\nFOOTER",
+        "HEADER\nPage four content here.\nFOOTER",
+        "HEADER\nPage five content here.\nFOOTER",
+    ]
+    result = _strip_headers_footers(pages)
+    for page in result:
+        assert "HEADER" not in page
+        assert "FOOTER" not in page
+
+
+def test_strip_keeps_unique_content_lines():
+    pages = [
+        "HEADER\nUnique line A.\nFOOTER",
+        "HEADER\nUnique line B.\nFOOTER",
+        "HEADER\nUnique line C.\nFOOTER",
+        "HEADER\nUnique line D.\nFOOTER",
+        "HEADER\nUnique line E.\nFOOTER",
+    ]
+    result = _strip_headers_footers(pages)
+    for i, page in enumerate(result):
+        assert f"Unique line {chr(65 + i)}." in page
+
+
+def test_strip_does_not_strip_below_threshold():
+    # "RARE_HEADER" appears in 2/5 pages = 40%, below 60% threshold
+    pages = [
+        "RARE_HEADER\nContent A.\nfooter",
+        "RARE_HEADER\nContent B.\nfooter",
+        "Content C.\nfooter",
+        "Content D.\nfooter",
+        "Content E.\nfooter",
+    ]
+    result = _strip_headers_footers(pages)
+    assert any("RARE_HEADER" in p for p in result)
+
+
+def test_strip_single_page_unchanged():
+    pages = ["Only one page, nothing repeats, so nothing is stripped."]
+    result = _strip_headers_footers(pages)
+    assert result == pages

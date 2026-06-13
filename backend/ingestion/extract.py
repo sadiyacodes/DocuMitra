@@ -43,6 +43,37 @@ def _detect_scanned(text: str) -> bool:
     return len(text.strip()) < MIN_NATIVE_CHARS
 
 
+def _strip_headers_footers(pages: list[str]) -> list[str]:
+    if len(pages) <= 1:
+        return pages
+
+    total = len(pages)
+    line_counts: dict[str, int] = {}
+
+    for text in pages:
+        lines = text.splitlines()
+        candidates = (
+            [l.strip() for l in lines[:HEADER_LINES]]
+            + [l.strip() for l in lines[-FOOTER_LINES:]]
+        )
+        for line in set(candidates):
+            if line:
+                line_counts[line] = line_counts.get(line, 0) + 1
+
+    to_strip = {
+        line for line, count in line_counts.items()
+        if count / total >= HEURISTIC_THRESHOLD
+    }
+
+    if not to_strip:
+        return pages
+
+    return [
+        "\n".join(l for l in text.splitlines() if l.strip() not in to_strip)
+        for text in pages
+    ]
+
+
 @dataclass
 class PageContent:
     pdf_id: str
