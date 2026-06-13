@@ -7,6 +7,7 @@ import os
 from typing import Iterator
 
 import anthropic
+import requests
 
 from backend.generation.prompt_templates import SYSTEM_PROMPT, build_user_message
 from backend.retrieval.vector_store import SearchResult
