@@ -83,3 +83,13 @@ async def ingest_endpoint(
     chunks = chunk_document(doc)
     added = embed_chunks(chunks, client)
     return IngestResponse(pdf_id=doc.pdf_id, filename=doc.filename, chunks_added=added)
+
+
+@app.get("/chunks")
+def chunks_endpoint(
+    query: str,
+    k: int = 5,
+    client: Client = Depends(get_supabase),
+) -> dict:
+    results = search(query, client, k=k)
+    return {"results": [dataclasses.asdict(r) for r in results]}

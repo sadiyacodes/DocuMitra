@@ -156,3 +156,36 @@ def test_ingest_calls_full_pipeline_in_order():
     mock_extract.assert_called_once()
     mock_chunk.assert_called_once_with(fake_doc)
     mock_embed.assert_called_once_with(fake_chunks, mock_supabase)
+
+
+# ── GET /chunks ──────────────────────────────────────────────────────────────
+
+def test_chunks_returns_results_list():
+    fake = [_make_result()]
+    with patch("backend.main.search", return_value=fake):
+        response = client.get("/chunks?query=test")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["results"]) == 1
+    assert data["results"][0]["filename"] == "doc.pdf"
+    assert data["results"][0]["page_number"] == 1
+
+
+def test_chunks_passes_k_to_search():
+    with patch("backend.main.search", return_value=[]) as mock_s:
+        client.get("/chunks?query=test&k=3")
+    _, kwargs = mock_s.call_args
+    assert kwargs["k"] == 3
+
+
+def test_chunks_default_k_is_5():
+    with patch("backend.main.search", return_value=[]) as mock_s:
+        client.get("/chunks?query=test")
+    _, kwargs = mock_s.call_args
+    assert kwargs["k"] == 5
+
+
+def test_chunks_empty_results():
+    with patch("backend.main.search", return_value=[]):
+        response = client.get("/chunks?query=nothing")
+    assert response.json() == {"results": []}
