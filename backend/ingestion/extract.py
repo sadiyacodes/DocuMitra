@@ -144,58 +144,62 @@ def extract_pdf(path: Path) -> ExtractedDocument:
     except Exception as e:
         raise ExtractionError(filename, e)
 
-    if doc.is_encrypted:
-        raise ExtractionError(filename, "PDF is password-protected")
+    try:
+        if doc.is_encrypted:
+            raise ExtractionError(filename, "PDF is password-protected")
 
-    raw_texts: list[str] = []
-    bboxes: list[tuple[float, float, float, float]] = []
-    is_ocr_flags: list[bool] = []
+        raw_texts: list[str] = []
+        bboxes: list[tuple[float, float, float, float]] = []
+        is_ocr_flags: list[bool] = []
 
-    for page in doc:
-        blocks = page.get_text("dict")["blocks"]
-        native_text = "\n".join(
-            span["text"]
-            for block in blocks
-            if block["type"] == 0
-            for line in block["lines"]
-            for span in line["spans"]
-        )
+        for page in doc:
+            blocks = page.get_text("dict")["blocks"]
+            native_text = "\n".join(
+                span["text"]
+                for block in blocks
+                if block["type"] == 0
+                for line in block["lines"]
+                for span in line["spans"]
+            )
 
-        rect = page.rect
-        bboxes.append((rect.x0, rect.y0, rect.x1, rect.y1))
+            rect = page.rect
+            bboxes.append((rect.x0, rect.y0, rect.x1, rect.y1))
 
-        is_ocr = _detect_scanned(native_text)
-        is_ocr_flags.append(is_ocr)
+            is_ocr = _detect_scanned(native_text)
+            is_ocr_flags.append(is_ocr)
 
-        if is_ocr:
-            try:
-                page_text = _ocr_page(page)
-            except pytesseract.TesseractNotFoundError as e:
-                raise ExtractionError(
-                    filename,
-                    f"Tesseract not installed: {e}. Install with: brew install tesseract",
-                )
-        else:
-            page_text = native_text
+            if is_ocr:
+                try:
+                    page_text = _ocr_page(page)
+                except pytesseract.TesseractNotFoundError as e:
+                    raise ExtractionError(
+                        filename,
+                        f"Tesseract not installed: {e}. Install with: brew install tesseract",
+                    )
+            else:
+                page_text = native_text
+                image_text = _ocr_images(page, doc)
+                if image_text:
+                    page_text = page_text + "\n" + image_text
 
-        image_text = _ocr_images(page, doc)
-        if image_text:
-            page_text = page_text + "\n" + image_text
+            raw_texts.append(page_text)
 
-        raw_texts.append(page_text)
+        stripped_texts = _strip_headers_footers(raw_texts)
 
-    stripped_texts = _strip_headers_footers(raw_texts)
-
-    pages = [
-        PageContent(
+        return ExtractedDocument(
             pdf_id=pdf_id,
             filename=filename,
-            page_number=i + 1,
-            text=_normalize_text(text),
-            bbox=bbox,
-            is_ocr=is_ocr,
+            pages=[
+                PageContent(
+                    pdf_id=pdf_id,
+                    filename=filename,
+                    page_number=i + 1,
+                    text=_normalize_text(text),
+                    bbox=bbox,
+                    is_ocr=is_ocr,
+                )
+                for i, (text, bbox, is_ocr) in enumerate(zip(stripped_texts, bboxes, is_ocr_flags))
+            ],
         )
-        for i, (text, bbox, is_ocr) in enumerate(zip(stripped_texts, bboxes, is_ocr_flags))
-    ]
-
-    return ExtractedDocument(pdf_id=pdf_id, filename=filename, pages=pages)
+    finally:
+        doc.close()
