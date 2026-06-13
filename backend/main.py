@@ -33,3 +33,25 @@ def _get_supabase() -> Client:
 
 def get_supabase() -> Client:
     return _get_supabase()
+
+
+class QueryRequest(BaseModel):
+    query: str
+    rerank: bool = True
+
+
+def _sse_generator(query: str, client: Client, rerank_enabled: bool):
+    results = search(query, client)
+    if rerank_enabled:
+        results = rerank(query, results)
+    for chunk in generate(query, results):
+        yield f"data: {json.dumps(chunk)}\n\n"
+    yield "data: [DONE]\n\n"
+
+
+@app.post("/query")
+def query_endpoint(req: QueryRequest, client: Client = Depends(get_supabase)):
+    return StreamingResponse(
+        _sse_generator(req.query, client, req.rerank),
+        media_type="text/event-stream",
+    )
