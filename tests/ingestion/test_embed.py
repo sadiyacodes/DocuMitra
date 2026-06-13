@@ -29,3 +29,45 @@ def test_get_model_singleton_cached():
         r2 = _get_model()
     assert r1 is r2
     mock_st.assert_called_once()
+
+
+from backend.ingestion.embed import TABLE_NAME, _fetch_existing_ids
+
+
+def _make_client(existing: list[str]) -> MagicMock:
+    """Mock Supabase client returning given chunk_ids from SELECT."""
+    mock = MagicMock()
+    mock.table.return_value.select.return_value.in_.return_value.execute.return_value.data = [
+        {"chunk_id": cid} for cid in existing
+    ]
+    return mock
+
+
+def test_fetch_existing_ids_returns_matching_set():
+    client = _make_client(["abc", "def"])
+    result = _fetch_existing_ids({"abc", "def", "ghi"}, client)
+    assert result == {"abc", "def"}
+
+
+def test_fetch_existing_ids_empty_table_returns_empty_set():
+    client = _make_client([])
+    result = _fetch_existing_ids({"abc", "def"}, client)
+    assert result == set()
+
+
+def test_fetch_existing_ids_empty_input_returns_empty_set():
+    client = _make_client([])
+    result = _fetch_existing_ids(set(), client)
+    assert result == set()
+
+
+def test_fetch_existing_ids_queries_correct_table():
+    client = _make_client([])
+    _fetch_existing_ids({"abc"}, client)
+    client.table.assert_called_once_with(TABLE_NAME)
+
+
+def test_fetch_existing_ids_selects_chunk_id_column():
+    client = _make_client([])
+    _fetch_existing_ids({"abc"}, client)
+    client.table.return_value.select.assert_called_once_with("chunk_id")

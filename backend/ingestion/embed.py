@@ -25,3 +25,11 @@ def _get_model() -> SentenceTransformer:
     if _model is None:
         _model = SentenceTransformer(EMBEDDING_MODEL)
     return _model
+
+
+def _fetch_existing_ids(ids: set[str], client: Client) -> set[str]:
+    """Return the subset of ids already present in pgvector."""
+    if not ids:
+        return set()
+    resp = client.table(TABLE_NAME).select("chunk_id").in_("chunk_id", list(ids)).execute()
+    return {row["chunk_id"] for row in resp.data}
