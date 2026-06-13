@@ -124,3 +124,110 @@ def test_citation_accuracy_partial():
     answer = "[doc.pdf, p.1] and [other.pdf, p.5]."
     results = [_make_result("c1", "doc.pdf", 1)]
     assert _citation_accuracy(answer, results) == 0.5
+
+
+# ── run_eval ──────────────────────────────────────────────────────────────────
+
+def test_run_eval_raises_on_empty_queries():
+    with pytest.raises(ValueError):
+        run_eval([], MagicMock())
+
+
+def test_run_eval_returns_eval_report():
+    retrieved = [_make_result("c1")]
+    with patch("backend.eval.eval_runner.search", return_value=retrieved):
+        with patch("backend.eval.eval_runner.rerank_fn", return_value=retrieved):
+            with patch("backend.eval.eval_runner.generate", return_value=iter(["answer"])):
+                report = run_eval([EvalQuery("test?")], MagicMock())
+    assert isinstance(report, EvalReport)
+    assert report.n_queries == 1
+
+
+def test_run_eval_p95_latency_is_non_negative():
+    retrieved = [_make_result()]
+    with patch("backend.eval.eval_runner.search", return_value=retrieved):
+        with patch("backend.eval.eval_runner.rerank_fn", return_value=retrieved):
+            with patch("backend.eval.eval_runner.generate", return_value=iter(["x"])):
+                report = run_eval([EvalQuery("q?")], MagicMock())
+    assert report.p95_latency_ms >= 0.0
+
+
+def test_run_eval_recall_hit():
+    retrieved = [_make_result("c1")]
+    query = EvalQuery("q?", relevant_chunk_ids=["c1"])
+    with patch("backend.eval.eval_runner.search", return_value=retrieved):
+        with patch("backend.eval.eval_runner.rerank_fn", return_value=retrieved):
+            with patch("backend.eval.eval_runner.generate", return_value=iter(["ans"])):
+                report = run_eval([query], MagicMock())
+    assert report.recall_at_k == 1.0
+
+
+def test_run_eval_recall_miss():
+    retrieved = [_make_result("c1")]
+    query = EvalQuery("q?", relevant_chunk_ids=["other"])
+    with patch("backend.eval.eval_runner.search", return_value=retrieved):
+        with patch("backend.eval.eval_runner.rerank_fn", return_value=retrieved):
+            with patch("backend.eval.eval_runner.generate", return_value=iter(["ans"])):
+                report = run_eval([query], MagicMock())
+    assert report.recall_at_k == 0.0
+
+
+def test_run_eval_mrr_first_result():
+    retrieved = [_make_result("c1"), _make_result("c2")]
+    query = EvalQuery("q?", relevant_chunk_ids=["c1"])
+    with patch("backend.eval.eval_runner.search", return_value=retrieved):
+        with patch("backend.eval.eval_runner.rerank_fn", return_value=retrieved):
+            with patch("backend.eval.eval_runner.generate", return_value=iter(["ans"])):
+                report = run_eval([query], MagicMock())
+    assert report.mrr == pytest.approx(1.0)
+
+
+def test_run_eval_nan_metrics_without_ground_truth():
+    retrieved = [_make_result()]
+    with patch("backend.eval.eval_runner.search", return_value=retrieved):
+        with patch("backend.eval.eval_runner.rerank_fn", return_value=retrieved):
+            with patch("backend.eval.eval_runner.generate", return_value=iter(["ans"])):
+                report = run_eval([EvalQuery("q?")], MagicMock())
+    assert math.isnan(report.recall_at_k)
+    assert math.isnan(report.mrr)
+    assert math.isnan(report.hallucination_rate)
+
+
+def test_run_eval_hallucination_detected():
+    # retrieved c1, but relevant is "other" — system confidently answers → hallucination
+    retrieved = [_make_result("c1")]
+    query = EvalQuery("q?", relevant_chunk_ids=["other"])
+    with patch("backend.eval.eval_runner.search", return_value=retrieved):
+        with patch("backend.eval.eval_runner.rerank_fn", return_value=retrieved):
+            with patch("backend.eval.eval_runner.generate", return_value=iter(["confident answer"])):
+                report = run_eval([query], MagicMock())
+    assert report.hallucination_rate == 1.0
+
+
+def test_run_eval_no_hallucination_when_no_answer_response():
+    # system correctly says NO_ANSWER_RESPONSE when no relevant chunk retrieved
+    retrieved = [_make_result("c1")]
+    query = EvalQuery("q?", relevant_chunk_ids=["other"])
+    with patch("backend.eval.eval_runner.search", return_value=retrieved):
+        with patch("backend.eval.eval_runner.rerank_fn", return_value=retrieved):
+            with patch("backend.eval.eval_runner.generate", return_value=iter([NO_ANSWER_RESPONSE])):
+                report = run_eval([query], MagicMock())
+    assert report.hallucination_rate == 0.0
+
+
+def test_run_eval_citation_accuracy_grounded():
+    retrieved = [_make_result("c1", "doc.pdf", 1)]
+    with patch("backend.eval.eval_runner.search", return_value=retrieved):
+        with patch("backend.eval.eval_runner.rerank_fn", return_value=retrieved):
+            with patch("backend.eval.eval_runner.generate", return_value=iter(["Answer [doc.pdf, p.1]."])):
+                report = run_eval([EvalQuery("q?")], MagicMock())
+    assert report.citation_accuracy == 1.0
+
+
+def test_run_eval_skips_rerank_when_disabled():
+    retrieved = [_make_result()]
+    with patch("backend.eval.eval_runner.search", return_value=retrieved):
+        with patch("backend.eval.eval_runner.rerank_fn") as mock_rerank:
+            with patch("backend.eval.eval_runner.generate", return_value=iter(["x"])):
+                run_eval([EvalQuery("q?")], MagicMock(), use_rerank=False)
+    mock_rerank.assert_not_called()
