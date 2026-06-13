@@ -51,3 +51,73 @@ class Chunk:
     token_count: int
     language: str
     bbox: tuple[float, float, float, float] | None
+
+
+def _chunk_page(
+    page: PageContent,
+    tokenizer: AutoTokenizer,
+    max_tokens: int = CHUNK_MAX_TOKENS,
+    overlap_tokens: int = OVERLAP_TOKENS,
+) -> list[Chunk]:
+    if not page.text.strip():
+        return []
+
+    sentences = _split_sentences(page.text)
+    chunks: list[Chunk] = []
+    buffer: list[str] = []
+    buffer_tokens: int = 0
+    chunk_index: int = 0
+
+    for sentence in sentences:
+        sentence_tokens = _count_tokens(sentence, tokenizer)
+
+        if buffer and buffer_tokens + sentence_tokens > max_tokens:
+            chunk_text = " ".join(buffer)
+            chunk_id = hashlib.sha256(
+                f"{page.pdf_id}:{page.page_number}:{chunk_index}".encode()
+            ).hexdigest()[:16]
+            chunks.append(Chunk(
+                chunk_id=chunk_id,
+                pdf_id=page.pdf_id,
+                filename=page.filename,
+                page_number=page.page_number,
+                text=chunk_text,
+                token_count=buffer_tokens,
+                language=_detect_language(chunk_text),
+                bbox=page.bbox,
+            ))
+            chunk_index += 1
+
+            overlap: list[str] = []
+            overlap_token_count: int = 0
+            for s in reversed(buffer):
+                s_tokens = _count_tokens(s, tokenizer)
+                if overlap_token_count + s_tokens <= overlap_tokens:
+                    overlap.insert(0, s)
+                    overlap_token_count += s_tokens
+                else:
+                    break
+
+            buffer = overlap + [sentence]
+            buffer_tokens = overlap_token_count + sentence_tokens
+        else:
+            buffer.append(sentence)
+            buffer_tokens += sentence_tokens
+
+    if buffer:
+        chunk_text = " ".join(buffer)
+        chunk_id = hashlib.sha256(
+            f"{page.pdf_id}:{page.page_number}:{chunk_index}".encode()
+        ).hexdigest()[:16]
+        chunks.append(Chunk(
+            chunk_id=chunk_id,
+            pdf_id=page.pdf_id,
+            filename=page.filename,
+            page_number=page.page_number,
+            text=chunk_text,
+            token_count=buffer_tokens,
+            language=_detect_language(chunk_text),
+            bbox=page.bbox,
+        ))
+
+    return chunks
