@@ -89,3 +89,32 @@ def test_count_tokens_returns_int():
     mock_tokenizer = MagicMock()
     mock_tokenizer.encode.return_value = [10, 20]
     assert isinstance(_count_tokens("hi", mock_tokenizer), int)
+
+
+from unittest.mock import patch
+
+from langdetect import LangDetectException
+
+from backend.ingestion.chunker import _detect_language
+
+
+def test_detect_language_english():
+    text = (
+        "This is a sufficiently long English sentence for language detection "
+        "to work reliably and return the correct language code."
+    )
+    assert _detect_language(text) == "en"
+
+
+def test_detect_language_too_short_returns_unknown():
+    with patch(
+        "backend.ingestion.chunker.langdetect.detect",
+        side_effect=LangDetectException(0, ""),
+    ):
+        result = _detect_language("hi")
+    assert result == "unknown"
+
+
+def test_detect_language_returns_string():
+    text = "Enough text for detection to work without raising an exception here."
+    assert isinstance(_detect_language(text), str)

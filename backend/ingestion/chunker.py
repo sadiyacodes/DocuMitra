@@ -34,6 +34,13 @@ def _count_tokens(text: str, tokenizer: AutoTokenizer) -> int:
     return len(tokenizer.encode(text, add_special_tokens=False))
 
 
+def _detect_language(text: str) -> str:
+    try:
+        return langdetect.detect(text)
+    except LangDetectException:
+        return "unknown"
+
+
 @dataclass
 class Chunk:
     chunk_id: str
