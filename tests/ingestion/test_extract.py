@@ -314,3 +314,195 @@ def test_ocr_images_skips_blank_ocr_result():
                 result = _ocr_images(mock_page, mock_doc)
 
     assert result == ""
+
+
+import pytest
+
+from backend.ingestion.extract import extract_pdf
+
+
+def _make_mock_page(text: str, images: list | None = None) -> MagicMock:
+    """Helper: build a fitz.Page mock returning given native text and image list."""
+    mock_page = MagicMock()
+    mock_page.get_text.return_value = {
+        "blocks": [
+            {
+                "type": 0,
+                "lines": [{"spans": [{"text": text}]}],
+            }
+        ]
+    }
+    mock_rect = MagicMock()
+    mock_rect.x0, mock_rect.y0, mock_rect.x1, mock_rect.y1 = 0.0, 0.0, 595.0, 842.0
+    mock_page.rect = mock_rect
+    mock_page.get_images.return_value = images or []
+    return mock_page
+
+
+def test_extract_pdf_returns_extracted_document(tmp_path):
+    fake_pdf = tmp_path / "sample.pdf"
+    fake_pdf.write_bytes(b"fake pdf bytes for hashing")
+
+    mock_page = _make_mock_page(
+        "This is page one with enough content to avoid triggering OCR."
+    )
+    mock_doc = MagicMock()
+    mock_doc.__iter__ = lambda self: iter([mock_page])
+    mock_doc.is_encrypted = False
+
+    with patch("backend.ingestion.extract.fitz.open", return_value=mock_doc):
+        result = extract_pdf(fake_pdf)
+
+    assert isinstance(result, ExtractedDocument)
+    assert result.filename == "sample.pdf"
+    assert len(result.pages) == 1
+
+
+def test_extract_pdf_pdf_id_is_16_hex_chars(tmp_path):
+    fake_pdf = tmp_path / "sample.pdf"
+    fake_pdf.write_bytes(b"deterministic content")
+
+    mock_page = _make_mock_page(
+        "Content long enough to avoid triggering OCR path in this test."
+    )
+    mock_doc = MagicMock()
+    mock_doc.__iter__ = lambda self: iter([mock_page])
+    mock_doc.is_encrypted = False
+
+    with patch("backend.ingestion.extract.fitz.open", return_value=mock_doc):
+        result = extract_pdf(fake_pdf)
+
+    assert len(result.pdf_id) == 16
+    assert all(c in "0123456789abcdef" for c in result.pdf_id)
+
+
+def test_extract_pdf_pdf_id_is_deterministic(tmp_path):
+    fake_pdf = tmp_path / "sample.pdf"
+    fake_pdf.write_bytes(b"deterministic content")
+
+    mock_page = _make_mock_page(
+        "Content long enough to avoid triggering OCR path in this test."
+    )
+    mock_doc = MagicMock()
+    mock_doc.__iter__ = lambda self: iter([mock_page])
+    mock_doc.is_encrypted = False
+
+    with patch("backend.ingestion.extract.fitz.open", return_value=mock_doc):
+        r1 = extract_pdf(fake_pdf)
+        r2 = extract_pdf(fake_pdf)
+
+    assert r1.pdf_id == r2.pdf_id
+
+
+def test_extract_pdf_page_numbers_are_one_indexed(tmp_path):
+    fake_pdf = tmp_path / "sample.pdf"
+    fake_pdf.write_bytes(b"bytes")
+
+    pages = [
+        _make_mock_page("Page one has enough content to be treated as native text."),
+        _make_mock_page("Page two has enough content to be treated as native text."),
+    ]
+    mock_doc = MagicMock()
+    mock_doc.__iter__ = lambda self: iter(pages)
+    mock_doc.is_encrypted = False
+
+    with patch("backend.ingestion.extract.fitz.open", return_value=mock_doc):
+        result = extract_pdf(fake_pdf)
+
+    assert result.pages[0].page_number == 1
+    assert result.pages[1].page_number == 2
+
+
+def test_extract_pdf_scanned_page_sets_is_ocr_true(tmp_path):
+    fake_pdf = tmp_path / "scanned.pdf"
+    fake_pdf.write_bytes(b"bytes")
+
+    mock_page = _make_mock_page("")  # empty native text → triggers OCR
+    mock_doc = MagicMock()
+    mock_doc.__iter__ = lambda self: iter([mock_page])
+    mock_doc.is_encrypted = False
+
+    with patch("backend.ingestion.extract.fitz.open", return_value=mock_doc):
+        with patch(
+            "backend.ingestion.extract._ocr_page",
+            return_value="scanned page content with sufficient text here",
+        ):
+            result = extract_pdf(fake_pdf)
+
+    assert result.pages[0].is_ocr is True
+
+
+def test_extract_pdf_native_page_sets_is_ocr_false(tmp_path):
+    fake_pdf = tmp_path / "native.pdf"
+    fake_pdf.write_bytes(b"bytes")
+
+    mock_page = _make_mock_page(
+        "This page has plenty of native text content to avoid OCR entirely."
+    )
+    mock_doc = MagicMock()
+    mock_doc.__iter__ = lambda self: iter([mock_page])
+    mock_doc.is_encrypted = False
+
+    with patch("backend.ingestion.extract.fitz.open", return_value=mock_doc):
+        result = extract_pdf(fake_pdf)
+
+    assert result.pages[0].is_ocr is False
+
+
+def test_extract_pdf_raises_on_corrupt_pdf(tmp_path):
+    fake_pdf = tmp_path / "corrupt.pdf"
+    fake_pdf.write_bytes(b"not a pdf")
+
+    with patch(
+        "backend.ingestion.extract.fitz.open",
+        side_effect=RuntimeError("bad pdf"),
+    ):
+        with pytest.raises(ExtractionError) as exc_info:
+            extract_pdf(fake_pdf)
+
+    assert "corrupt.pdf" in str(exc_info.value)
+
+
+def test_extract_pdf_raises_on_encrypted_pdf(tmp_path):
+    fake_pdf = tmp_path / "locked.pdf"
+    fake_pdf.write_bytes(b"bytes")
+
+    mock_doc = MagicMock()
+    mock_doc.is_encrypted = True
+
+    with patch("backend.ingestion.extract.fitz.open", return_value=mock_doc):
+        with pytest.raises(ExtractionError) as exc_info:
+            extract_pdf(fake_pdf)
+
+    assert "locked.pdf" in str(exc_info.value)
+
+
+def test_extract_pdf_empty_pdf_returns_empty_pages(tmp_path):
+    fake_pdf = tmp_path / "empty.pdf"
+    fake_pdf.write_bytes(b"bytes")
+
+    mock_doc = MagicMock()
+    mock_doc.__iter__ = lambda self: iter([])
+    mock_doc.is_encrypted = False
+
+    with patch("backend.ingestion.extract.fitz.open", return_value=mock_doc):
+        result = extract_pdf(fake_pdf)
+
+    assert result.pages == []
+
+
+def test_extract_pdf_bbox_populated_from_page_rect(tmp_path):
+    fake_pdf = tmp_path / "sample.pdf"
+    fake_pdf.write_bytes(b"bytes")
+
+    mock_page = _make_mock_page(
+        "Enough native text content to avoid triggering OCR path here."
+    )
+    mock_doc = MagicMock()
+    mock_doc.__iter__ = lambda self: iter([mock_page])
+    mock_doc.is_encrypted = False
+
+    with patch("backend.ingestion.extract.fitz.open", return_value=mock_doc):
+        result = extract_pdf(fake_pdf)
+
+    assert result.pages[0].bbox == (0.0, 0.0, 595.0, 842.0)

@@ -117,3 +117,85 @@ def _ocr_images(page: fitz.Page, doc: fitz.Document) -> str:
         except Exception as e:
             log.warning("Failed to OCR image xref=%d: %s", xref, e)
     return "\n".join(texts)
+
+
+def extract_pdf(path: Path) -> ExtractedDocument:
+    """Extract text from a PDF file, using native text or OCR as appropriate.
+
+    Reads each page, detects scanned pages, strips repeated headers/footers,
+    OCRs embedded images, normalizes text, and returns an ExtractedDocument
+    with per-page PageContent objects.
+
+    Args:
+        path: Filesystem path to the PDF file.
+
+    Returns:
+        ExtractedDocument with pdf_id, filename, and list of PageContent.
+
+    Raises:
+        ExtractionError: If the PDF cannot be opened or is password-protected.
+    """
+    file_bytes = path.read_bytes()
+    pdf_id = hashlib.sha256(file_bytes).hexdigest()[:16]
+    filename = path.name
+
+    try:
+        doc = fitz.open(str(path))
+    except Exception as e:
+        raise ExtractionError(filename, e)
+
+    if doc.is_encrypted:
+        raise ExtractionError(filename, "PDF is password-protected")
+
+    raw_texts: list[str] = []
+    bboxes: list[tuple[float, float, float, float]] = []
+    is_ocr_flags: list[bool] = []
+
+    for page in doc:
+        blocks = page.get_text("dict")["blocks"]
+        native_text = "\n".join(
+            span["text"]
+            for block in blocks
+            if block["type"] == 0
+            for line in block["lines"]
+            for span in line["spans"]
+        )
+
+        rect = page.rect
+        bboxes.append((rect.x0, rect.y0, rect.x1, rect.y1))
+
+        is_ocr = _detect_scanned(native_text)
+        is_ocr_flags.append(is_ocr)
+
+        if is_ocr:
+            try:
+                page_text = _ocr_page(page)
+            except pytesseract.TesseractNotFoundError as e:
+                raise ExtractionError(
+                    filename,
+                    f"Tesseract not installed: {e}. Install with: brew install tesseract",
+                )
+        else:
+            page_text = native_text
+
+        image_text = _ocr_images(page, doc)
+        if image_text:
+            page_text = page_text + "\n" + image_text
+
+        raw_texts.append(page_text)
+
+    stripped_texts = _strip_headers_footers(raw_texts)
+
+    pages = [
+        PageContent(
+            pdf_id=pdf_id,
+            filename=filename,
+            page_number=i + 1,
+            text=_normalize_text(text),
+            bbox=bbox,
+            is_ocr=is_ocr,
+        )
+        for i, (text, bbox, is_ocr) in enumerate(zip(stripped_texts, bboxes, is_ocr_flags))
+    ]
+
+    return ExtractedDocument(pdf_id=pdf_id, filename=filename, pages=pages)
