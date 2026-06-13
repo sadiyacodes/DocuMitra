@@ -12,7 +12,9 @@ from backend.generation.llm_client import (
     OLLAMA_MODEL,
     _generate_anthropic,
     _generate_ollama,
+    generate,
 )
+from backend.retrieval.vector_store import SearchResult
 
 
 def _make_stream_cm(chunks: list[str]) -> MagicMock:
@@ -145,9 +147,6 @@ def test_generate_ollama_empty_content_chunks_skipped():
     assert result == ["real"]
 
 
-from backend.generation.llm_client import generate
-
-
 def test_generate_yields_anthropic_chunks():
     chunks = ["Hello ", "world"]
     with patch("backend.generation.llm_client._generate_anthropic", return_value=iter(chunks)):
@@ -184,7 +183,6 @@ def test_generate_logs_warning_on_fallback():
 
 
 def test_generate_calls_build_user_message_with_query_and_results():
-    from backend.retrieval.vector_store import SearchResult
     results = [
         SearchResult(
             chunk_id="abc123def456abcd",
