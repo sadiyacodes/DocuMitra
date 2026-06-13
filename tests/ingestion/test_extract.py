@@ -255,13 +255,15 @@ def test_ocr_images_extracts_and_ocrs_single_image():
     mock_page.get_images.return_value = [(42, 0, 0, 0, 0, "", "", 0)]
 
     mock_pixmap = MagicMock()
+    mock_pixmap.n = 3
     mock_pixmap.tobytes.return_value = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
 
-    with patch("backend.ingestion.extract.fitz.Pixmap", return_value=mock_pixmap):
+    with patch("backend.ingestion.extract.fitz.Pixmap", return_value=mock_pixmap) as mock_px:
         with patch("backend.ingestion.extract.Image.open"):
             with patch("backend.ingestion.extract.pytesseract.image_to_string", return_value="diagram label"):
                 result = _ocr_images(mock_page, mock_doc)
 
+    mock_px.assert_called_once_with(mock_doc, 42)
     assert result == "diagram label"
 
 
@@ -274,6 +276,7 @@ def test_ocr_images_joins_multiple_images_with_newline():
     ]
 
     mock_pixmap = MagicMock()
+    mock_pixmap.n = 3
     mock_pixmap.tobytes.return_value = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
 
     with patch("backend.ingestion.extract.fitz.Pixmap", return_value=mock_pixmap):
@@ -306,6 +309,7 @@ def test_ocr_images_skips_blank_ocr_result():
     mock_page.get_images.return_value = [(10, 0, 0, 0, 0, "", "", 0)]
 
     mock_pixmap = MagicMock()
+    mock_pixmap.n = 3
     mock_pixmap.tobytes.return_value = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
 
     with patch("backend.ingestion.extract.fitz.Pixmap", return_value=mock_pixmap):

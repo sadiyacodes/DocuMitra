@@ -53,8 +53,8 @@ def _strip_headers_footers(pages: list[str]) -> list[str]:
     for text in pages:
         lines = text.splitlines()
         candidates = (
-            [l.strip() for l in lines[:HEADER_LINES]]
-            + [l.strip() for l in lines[-FOOTER_LINES:]]
+            [line.strip() for line in lines[:HEADER_LINES]]
+            + [line.strip() for line in lines[-FOOTER_LINES:]]
         )
         for line in set(candidates):
             if line:
@@ -69,7 +69,7 @@ def _strip_headers_footers(pages: list[str]) -> list[str]:
         return pages
 
     return [
-        "\n".join(l for l in text.splitlines() if l.strip() not in to_strip)
+        "\n".join(line for line in text.splitlines() if line.strip() not in to_strip)
         for text in pages
     ]
 
@@ -99,17 +99,21 @@ class ExtractionError(Exception):
 
 
 def _ocr_page(page: fitz.Page) -> str:
+    """Render page as a 300-DPI PNG and return Tesseract OCR text."""
     pixmap = page.get_pixmap(dpi=OCR_DPI)
     image = Image.open(io.BytesIO(pixmap.tobytes("png")))
     return pytesseract.image_to_string(image, lang="eng")
 
 
 def _ocr_images(page: fitz.Page, doc: fitz.Document) -> str:
+    """OCR each embedded image on a native-text page; join non-blank results with newline."""
     texts: list[str] = []
     for img_info in page.get_images(full=True):
         xref = img_info[0]
         try:
             pixmap = fitz.Pixmap(doc, xref)
+            if pixmap.n > 4:
+                pixmap = fitz.Pixmap(fitz.csRGB, pixmap)
             image = Image.open(io.BytesIO(pixmap.tobytes("png")))
             text = pytesseract.image_to_string(image)
             if text.strip():
