@@ -32,7 +32,12 @@ export default function ChatPanel() {
         )}
       </div>
       <div className="flex-1 overflow-auto">
-        <MessageList messages={messages} isStreaming={isStreaming} bottomRef={bottomRef} />
+        <MessageList
+          messages={messages}
+          isStreaming={isStreaming}
+          bottomRef={bottomRef}
+          onSuggest={sendMessage}
+        />
       </div>
       <MessageInput onSend={sendMessage} disabled={isStreaming} />
     </div>

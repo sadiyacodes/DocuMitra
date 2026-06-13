@@ -1,5 +1,5 @@
 'use client'
-import { type KeyboardEvent, useRef } from 'react'
+import { type KeyboardEvent, useEffect, useRef } from 'react'
 
 interface Props {
   onSend: (value: string) => void
@@ -14,6 +14,8 @@ export default function MessageInput({ onSend, disabled }: Props) {
     if (value) {
       onSend(value)
       ref.current!.value = ''
+      // reset height after clearing
+      if (ref.current) ref.current.style.height = 'auto'
     }
   }
 
@@ -24,25 +26,48 @@ export default function MessageInput({ onSend, disabled }: Props) {
     }
   }
 
+  // auto-grow as user types
+  function handleInput() {
+    const el = ref.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = Math.min(el.scrollHeight, 160) + 'px'
+  }
+
+  useEffect(() => {
+    ref.current?.focus()
+  }, [])
+
   return (
-    <div className="border-t border-gray-200 p-4 bg-white">
-      <div className="flex gap-2">
+    <div className="border-t border-gray-200 px-4 py-3 bg-white">
+      <div className="flex items-end gap-2">
         <textarea
           ref={ref}
-          rows={2}
+          rows={1}
           disabled={disabled}
           onKeyDown={handleKeyDown}
+          onInput={handleInput}
           placeholder="Ask a question… (Enter to send, Shift+Enter for newline)"
-          className="flex-1 resize-none rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+          className="flex-1 resize-none rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 leading-relaxed overflow-hidden"
+          style={{ minHeight: '42px', maxHeight: '160px' }}
         />
         <button
           disabled={disabled}
           onClick={submit}
-          className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+          className="shrink-0 px-4 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
         >
-          Send
+          {disabled ? (
+            <span className="flex items-center gap-1.5">
+              <span className="flex gap-0.5">
+                <span className="w-1 h-1 bg-white rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                <span className="w-1 h-1 bg-white rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                <span className="w-1 h-1 bg-white rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+              </span>
+            </span>
+          ) : 'Send'}
         </button>
       </div>
+      <p className="text-xs text-gray-400 mt-1.5 pl-1">Shift+Enter for newline</p>
     </div>
   )
 }
