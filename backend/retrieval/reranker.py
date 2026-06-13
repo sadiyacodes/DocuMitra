@@ -22,3 +22,22 @@ def _get_model() -> CrossEncoder:
     if _model is None:
         _model = CrossEncoder(RERANK_MODEL)
     return _model
+
+
+def rerank(
+    query: str,
+    results: list[SearchResult],
+    top_k: int = TOP_K_RERANK,
+    model: CrossEncoder | None = None,
+    enabled: bool = True,
+) -> list[SearchResult]:
+    """Rerank results with cross-encoder; when disabled returns results[:top_k]."""
+    if not enabled or not results:
+        return results[:top_k]
+
+    if model is None:
+        model = _get_model()
+
+    scores = model.predict([(query, r.text) for r in results])
+    ranked = sorted(zip(scores, results), key=lambda x: x[0], reverse=True)
+    return [r for _, r in ranked[:top_k]]
