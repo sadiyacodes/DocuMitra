@@ -49,3 +49,17 @@ def _generate_ollama(prompt: str, system: str) -> Iterator[str]:
             if line:
                 if chunk := json.loads(line).get("message", {}).get("content", ""):
                     yield chunk
+
+
+def generate(
+    query: str,
+    results: list[SearchResult],
+) -> Iterator[str]:
+    """Stream an answer with citations; falls back to Ollama if Anthropic fails."""
+    system = SYSTEM_PROMPT
+    prompt = build_user_message(query, results)
+    try:
+        yield from _generate_anthropic(prompt, system)
+    except anthropic.APIError as exc:
+        log.warning("Anthropic failed (%s), falling back to Ollama", exc)
+        yield from _generate_ollama(prompt, system)

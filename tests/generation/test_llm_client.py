@@ -143,3 +143,72 @@ def test_generate_ollama_empty_content_chunks_skipped():
     with patch("requests.post", return_value=resp):
         result = list(_generate_ollama("prompt", "system"))
     assert result == ["real"]
+
+
+from backend.generation.llm_client import generate
+
+
+def test_generate_yields_anthropic_chunks():
+    chunks = ["Hello ", "world"]
+    with patch("backend.generation.llm_client._generate_anthropic", return_value=iter(chunks)):
+        result = list(generate("query", []))
+    assert result == chunks
+
+
+def test_generate_falls_back_to_ollama_on_api_error():
+    mock_resp = MagicMock()
+    mock_resp.status_code = 529
+    mock_resp.headers = {}
+    api_error = anthropic.APIStatusError("overloaded", response=mock_resp, body={})
+    fallback_chunks = ["fallback ", "answer"]
+
+    with patch("backend.generation.llm_client._generate_anthropic", side_effect=api_error):
+        with patch("backend.generation.llm_client._generate_ollama", return_value=iter(fallback_chunks)):
+            result = list(generate("query", []))
+
+    assert result == fallback_chunks
+
+
+def test_generate_logs_warning_on_fallback():
+    mock_resp = MagicMock()
+    mock_resp.status_code = 529
+    mock_resp.headers = {}
+    api_error = anthropic.APIStatusError("overloaded", response=mock_resp, body={})
+
+    with patch("backend.generation.llm_client._generate_anthropic", side_effect=api_error):
+        with patch("backend.generation.llm_client._generate_ollama", return_value=iter([])):
+            with patch("backend.generation.llm_client.log") as mock_log:
+                list(generate("query", []))
+
+    mock_log.warning.assert_called_once()
+
+
+def test_generate_calls_build_user_message_with_query_and_results():
+    from backend.retrieval.vector_store import SearchResult
+    results = [
+        SearchResult(
+            chunk_id="abc123def456abcd",
+            pdf_id="testpdf123456789",
+            filename="doc.pdf",
+            page_number=1,
+            text="Some text.",
+            token_count=3,
+            language="en",
+            bbox=None,
+            similarity=0.9,
+        )
+    ]
+    with patch("backend.generation.llm_client.build_user_message", return_value="built") as mock_build:
+        with patch("backend.generation.llm_client._generate_anthropic", return_value=iter([])):
+            list(generate("my query", results))
+    mock_build.assert_called_once_with("my query", results)
+
+
+def test_generate_does_not_fall_back_on_non_api_error():
+    with patch("backend.generation.llm_client._generate_anthropic", side_effect=ValueError("unexpected")):
+        with patch("backend.generation.llm_client._generate_ollama", return_value=iter([])) as mock_ollama:
+            try:
+                list(generate("query", []))
+            except ValueError:
+                pass
+    mock_ollama.assert_not_called()
