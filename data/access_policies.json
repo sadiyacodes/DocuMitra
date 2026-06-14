@@ -1,0 +1,7 @@
+{
+  "employees.csv": ["admin", "hr"],
+  "audit_logs.json": ["admin"],
+  "policy_handbook.pdf": ["admin", "hr", "engineering", "finance"],
+  "financial_report.pdf": ["admin", "finance"],
+  "engineering_specs.pdf": ["admin", "engineering"]
+}
