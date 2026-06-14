@@ -8,8 +8,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from backend.auth.dependencies import get_current_user
-from backend.auth.models import User
 from backend.ingestion.extract import ExtractionError
 from backend.main import app, get_supabase
 from backend.retrieval.vector_store import SearchResult
@@ -25,15 +23,6 @@ def _reset_mocks():
     mock_supabase.reset_mock()
 
 
-@pytest.fixture(autouse=True)
-def mock_auth():
-    """Bypass JWT auth in all main.py tests."""
-    user = User(username="alice", hashed_password="x", role="admin")
-    app.dependency_overrides[get_current_user] = lambda: user
-    yield
-    app.dependency_overrides.pop(get_current_user, None)
-
-
 def _make_result(
     filename: str = "doc.pdf",
     page: int = 1,
@@ -41,15 +30,13 @@ def _make_result(
 ) -> SearchResult:
     return SearchResult(
         chunk_id="abc123def456abcd",
-        source_id="src-001",
-        source_type="pdf",
+        pdf_id="pdf123",
         filename=filename,
         page_number=page,
         text=text,
         token_count=3,
         language="en",
         bbox=None,
-        access_roles=[],
         similarity=0.9,
     )
 
@@ -71,77 +58,51 @@ def test_get_supabase_calls_create_client_with_env_vars():
 # ── POST /query ─────────────────────────────────────────────────────────────
 
 def test_query_returns_200_with_sse_content_type():
-    with patch("backend.main.route_query", return_value=["pdf"]):
-        with patch("backend.main.search", return_value=[_make_result()]):
-            with patch("backend.main.rerank", return_value=[_make_result()]):
-                with patch("backend.main.generate", return_value=iter(["answer"])):
-                    response = client.post("/query", json={"query": "test"})
+    with patch("backend.main.search", return_value=[_make_result()]):
+        with patch("backend.main.rerank", return_value=[_make_result()]):
+            with patch("backend.main.generate", return_value=iter(["answer"])):
+                response = client.post("/query", json={"query": "test"})
     assert response.status_code == 200
     assert "text/event-stream" in response.headers["content-type"]
 
 
 def test_query_streams_sse_chunks():
     chunks = ["Hello ", "world"]
-    with patch("backend.main.route_query", return_value=["pdf"]):
-        with patch("backend.main.search", return_value=[_make_result()]):
-            with patch("backend.main.rerank", return_value=[_make_result()]):
-                with patch("backend.main.generate", return_value=iter(chunks)):
-                    response = client.post("/query", json={"query": "test"})
-    # Filter only data: lines without event: prefix (text chunks)
-    data_lines = []
-    for block in response.text.split("\n\n"):
-        lines = block.strip().split("\n")
-        has_event = any(l.startswith("event:") for l in lines)
-        for l in lines:
-            if l.startswith("data: ") and not has_event:
-                data_lines.append(l[6:])
-    assert json.dumps("Hello ") in data_lines
-    assert json.dumps("world") in data_lines
+    with patch("backend.main.search", return_value=[_make_result()]):
+        with patch("backend.main.rerank", return_value=[_make_result()]):
+            with patch("backend.main.generate", return_value=iter(chunks)):
+                response = client.post("/query", json={"query": "test"})
+    events = [e for e in response.text.split("\n\n") if e.startswith("data: ")]
+    data_values = [e[len("data: "):] for e in events]
+    assert json.dumps("Hello ") in data_values
+    assert json.dumps("world") in data_values
 
 
 def test_query_sends_done_sentinel():
-    with patch("backend.main.route_query", return_value=["pdf"]):
-        with patch("backend.main.search", return_value=[_make_result()]):
-            with patch("backend.main.rerank", return_value=[_make_result()]):
-                with patch("backend.main.generate", return_value=iter(["text"])):
-                    response = client.post("/query", json={"query": "test"})
-    data_lines = []
-    for block in response.text.split("\n\n"):
-        lines = block.strip().split("\n")
-        has_event = any(l.startswith("event:") for l in lines)
-        for l in lines:
-            if l.startswith("data: ") and not has_event:
-                data_lines.append(l[6:])
-    assert "[DONE]" in data_lines
+    with patch("backend.main.search", return_value=[_make_result()]):
+        with patch("backend.main.rerank", return_value=[_make_result()]):
+            with patch("backend.main.generate", return_value=iter(["text"])):
+                response = client.post("/query", json={"query": "test"})
+    events = [e for e in response.text.split("\n\n") if e.startswith("data: ")]
+    data_values = [e[len("data: "):] for e in events]
+    assert "[DONE]" in data_values
 
 
 def test_query_calls_rerank_when_enabled():
     fake = [_make_result()]
-    with patch("backend.main.route_query", return_value=["pdf"]):
-        with patch("backend.main.search", return_value=fake):
-            with patch("backend.main.rerank", return_value=fake) as mock_r:
-                with patch("backend.main.generate", return_value=iter(["x"])):
-                    client.post("/query", json={"query": "hello"})
+    with patch("backend.main.search", return_value=fake):
+        with patch("backend.main.rerank", return_value=fake) as mock_r:
+            with patch("backend.main.generate", return_value=iter(["x"])):
+                client.post("/query", json={"query": "hello"})
     mock_r.assert_called_once_with("hello", fake)
 
 
 def test_query_skips_rerank_when_disabled():
-    with patch("backend.main.route_query", return_value=["pdf"]):
-        with patch("backend.main.search", return_value=[_make_result()]):
-            with patch("backend.main.rerank") as mock_r:
-                with patch("backend.main.generate", return_value=iter(["x"])):
-                    client.post("/query", json={"query": "test", "rerank": False})
+    with patch("backend.main.search", return_value=[_make_result()]):
+        with patch("backend.main.rerank") as mock_r:
+            with patch("backend.main.generate", return_value=iter(["x"])):
+                client.post("/query", json={"query": "test", "rerank": False})
     mock_r.assert_not_called()
-
-
-def test_query_emits_sources_event():
-    with patch("backend.main.route_query", return_value=["pdf"]):
-        with patch("backend.main.search", return_value=[_make_result()]):
-            with patch("backend.main.rerank", return_value=[_make_result()]):
-                with patch("backend.main.generate", return_value=iter(["answer"])):
-                    response = client.post("/query", json={"query": "test"})
-    raw = response.text
-    assert "event: sources" in raw
 
 
 # ── POST /ingest ─────────────────────────────────────────────────────────────
@@ -165,7 +126,7 @@ def test_ingest_returns_pdf_id_filename_and_count():
 
     assert response.status_code == 200
     data = response.json()
-    assert data["source_id"] == "pdf_abc123"
+    assert data["pdf_id"] == "pdf_abc123"
     assert data["filename"] == "test.pdf"
     assert data["chunks_added"] == 7
 
@@ -193,7 +154,7 @@ def test_ingest_calls_full_pipeline_in_order():
                 client.post("/ingest", files=[_make_upload()])
 
     mock_extract.assert_called_once()
-    mock_chunk.assert_called_once_with(fake_doc, access_roles=[])
+    mock_chunk.assert_called_once_with(fake_doc)
     mock_embed.assert_called_once_with(fake_chunks, mock_supabase)
 
 

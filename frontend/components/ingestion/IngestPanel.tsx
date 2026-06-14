@@ -1,9 +1,6 @@
 'use client'
 import { type ChangeEvent, type DragEvent, useRef, useState } from 'react'
-import { ApiError, ingestFile, ingestCsv, ingestJson } from '@/lib/api'
-import { getToken } from '@/lib/auth'
-
-type FileType = 'pdf' | 'csv' | 'json'
+import { ApiError, ingestFile } from '@/lib/api'
 
 type State =
   | { kind: 'idle'; dragging: boolean }
@@ -11,29 +8,14 @@ type State =
   | { kind: 'done'; filename: string; chunks_added: number }
   | { kind: 'error'; message: string }
 
-const FILE_TYPE_CONFIG: Record<FileType, { label: string; accept: string; hint: string }> = {
-  pdf:  { label: 'PDF',  accept: '.pdf',       hint: 'PDF documents' },
-  csv:  { label: 'CSV',  accept: '.csv',        hint: 'Spreadsheets / tabular data' },
-  json: { label: 'JSON', accept: '.json',       hint: 'JSON arrays or objects' },
-}
-
 export default function IngestPanel() {
-  const [fileType, setFileType] = useState<FileType>('pdf')
-  const [roles, setRoles] = useState('')
   const [state, setState] = useState<State>({ kind: 'idle', dragging: false })
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const config = FILE_TYPE_CONFIG[fileType]
-
   async function upload(file: File) {
     setState({ kind: 'uploading', filename: file.name })
-    const roleList = roles.split(',').map(r => r.trim()).filter(Boolean)
-    const token = getToken()
     try {
-      let res
-      if (fileType === 'csv') res = await ingestCsv(file, roleList, token)
-      else if (fileType === 'json') res = await ingestJson(file, roleList, token)
-      else res = await ingestFile(file, roleList, token)
+      const res = await ingestFile(file)
       setState({ kind: 'done', filename: res.filename, chunks_added: res.chunks_added })
     } catch (err) {
       const message =
@@ -51,7 +33,7 @@ export default function IngestPanel() {
     e.preventDefault()
     setState(s => s.kind === 'idle' ? { ...s, dragging: false } : s)
     const file = e.dataTransfer.files[0]
-    if (file) upload(file)
+    if (file?.type === 'application/pdf') upload(file)
   }
 
   if (state.kind === 'uploading') {
@@ -127,43 +109,9 @@ export default function IngestPanel() {
   return (
     <div className="p-8 max-w-2xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-xl font-semibold text-gray-900">Ingest a Document</h1>
+        <h1 className="text-xl font-semibold text-gray-900">Ingest a PDF</h1>
         <p className="text-sm text-gray-500 mt-1">Upload a document to extract, chunk, and index it for Q&A.</p>
       </div>
-
-      {/* File type tabs */}
-      <div className="flex gap-1 mb-5 bg-gray-100 p-1 rounded-lg w-fit">
-        {(Object.keys(FILE_TYPE_CONFIG) as FileType[]).map(ft => (
-          <button
-            key={ft}
-            type="button"
-            onClick={() => { setFileType(ft); setState({ kind: 'idle', dragging: false }) }}
-            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
-              fileType === ft
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            {FILE_TYPE_CONFIG[ft].label}
-          </button>
-        ))}
-      </div>
-
-      {/* Roles field */}
-      <div className="mb-5">
-        <label className="block text-xs font-medium text-gray-600 mb-1">
-          Access roles <span className="text-gray-400 font-normal">(comma-separated, leave blank for all)</span>
-        </label>
-        <input
-          type="text"
-          value={roles}
-          onChange={e => setRoles(e.target.value)}
-          placeholder="e.g. admin, hr, finance"
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-      </div>
-
-      {/* Drop zone */}
       <div
         onDrop={handleDrop}
         onDragOver={e => { e.preventDefault(); setState(s => s.kind === 'idle' ? { ...s, dragging: true } : s) }}
@@ -186,9 +134,9 @@ export default function IngestPanel() {
           </div>
           <div>
             <p className="text-sm font-medium text-gray-700">
-              {isDragging ? `Drop your ${config.label} here` : `Drag & drop a ${config.label}, or click to browse`}
+              {isDragging ? 'Drop your PDF here' : 'Drag & drop a PDF, or click to browse'}
             </p>
-            <p className="text-xs text-gray-400 mt-1">{config.hint} · No size limit</p>
+            <p className="text-xs text-gray-400 mt-1">PDF files only · No size limit</p>
           </div>
           <button
             type="button"
@@ -201,7 +149,7 @@ export default function IngestPanel() {
         <input
           ref={inputRef}
           type="file"
-          accept={config.accept}
+          accept=".pdf"
           className="hidden"
           onChange={handleChange}
         />

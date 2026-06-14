@@ -58,18 +58,15 @@ def _upsert_rows(
     """Build row dicts and upsert to Supabase in batches."""
     rows = [
         {
-            "chunk_id":     c.chunk_id,
-            "pdf_id":       c.source_id,
-            "source_id":    c.source_id,
-            "source_type":  c.source_type,
-            "filename":     c.filename,
-            "page_number":  c.page_number,
-            "text":         c.text,
-            "token_count":  c.token_count,
-            "language":     c.language,
-            "bbox":         list(c.bbox) if c.bbox is not None else None,
-            "embedding":    vectors[i].tolist(),
-            "access_roles": c.access_roles,
+            "chunk_id":    c.chunk_id,
+            "pdf_id":      c.pdf_id,
+            "filename":    c.filename,
+            "page_number": c.page_number,
+            "text":        c.text,
+            "token_count": c.token_count,
+            "language":    c.language,
+            "bbox":        list(c.bbox) if c.bbox is not None else None,
+            "embedding":   vectors[i].tolist(),
         }
         for i, c in enumerate(chunks)
     ]

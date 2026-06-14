@@ -43,16 +43,14 @@ def _detect_language(text: str) -> str:
 
 @dataclass
 class Chunk:
-    chunk_id:     str
-    source_id:    str   # stable identifier for the source document (was pdf_id)
-    source_type:  str   # "pdf" | "csv" | "json"
-    filename:     str
-    page_number:  int
-    text:         str
-    token_count:  int
-    language:     str
-    bbox:         tuple[float, float, float, float] | None
-    access_roles: list[str]
+    chunk_id: str
+    pdf_id: str
+    filename: str
+    page_number: int
+    text: str
+    token_count: int
+    language: str
+    bbox: tuple[float, float, float, float] | None
 
 
 def _chunk_page(
@@ -60,7 +58,6 @@ def _chunk_page(
     tokenizer: AutoTokenizer,
     max_tokens: int = CHUNK_MAX_TOKENS,
     overlap_tokens: int = OVERLAP_TOKENS,
-    access_roles: list[str] | None = None,
 ) -> list[Chunk]:
     """Split a single page into overlapping token-bounded chunks.
 
@@ -68,8 +65,6 @@ def _chunk_page(
     the tail sentences (up to overlap_tokens) into the next chunk. Sentences
     exceeding max_tokens are truncated by the tokenizer. Returns [] for empty pages.
     """
-    if access_roles is None:
-        access_roles = []
     if not page.text.strip():
         return []
 
@@ -94,15 +89,13 @@ def _chunk_page(
             ).hexdigest()[:16]
             chunks.append(Chunk(
                 chunk_id=chunk_id,
-                source_id=page.pdf_id,
-                source_type="pdf",
+                pdf_id=page.pdf_id,
                 filename=page.filename,
                 page_number=page.page_number,
                 text=chunk_text,
                 token_count=buffer_tokens,
                 language=_detect_language(chunk_text),
                 bbox=page.bbox,
-                access_roles=access_roles,
             ))
             chunk_index += 1
 
@@ -129,15 +122,13 @@ def _chunk_page(
         ).hexdigest()[:16]
         chunks.append(Chunk(
             chunk_id=chunk_id,
-            source_id=page.pdf_id,
-            source_type="pdf",
+            pdf_id=page.pdf_id,
             filename=page.filename,
             page_number=page.page_number,
             text=chunk_text,
             token_count=buffer_tokens,
             language=_detect_language(chunk_text),
             bbox=page.bbox,
-            access_roles=access_roles,
         ))
 
     return chunks
@@ -151,10 +142,7 @@ def _get_tokenizer() -> AutoTokenizer:
     return _tokenizer
 
 
-def chunk_document(
-    doc: ExtractedDocument,
-    access_roles: list[str] | None = None,
-) -> list[Chunk]:
+def chunk_document(doc: ExtractedDocument) -> list[Chunk]:
     """Split all pages of an extracted document into overlapping chunks.
 
     Returns a list of Chunk objects aggregated from all pages.
@@ -163,5 +151,5 @@ def chunk_document(
     tokenizer = _get_tokenizer()
     chunks: list[Chunk] = []
     for page in doc.pages:
-        chunks.extend(_chunk_page(page, tokenizer, access_roles=access_roles or []))
+        chunks.extend(_chunk_page(page, tokenizer))
     return chunks

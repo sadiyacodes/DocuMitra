@@ -27,15 +27,13 @@ def _make_result(
 ) -> SearchResult:
     return SearchResult(
         chunk_id=chunk_id,
-        source_id="pdf1",
-        source_type="pdf",
+        pdf_id="pdf1",
         filename=filename,
         page_number=page,
         text="Some text.",
         token_count=3,
         language="en",
         bbox=None,
-        access_roles=[],
         similarity=0.9,
     )
 
