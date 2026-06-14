@@ -32,13 +32,15 @@ def _make_result(filename: str = "doc.pdf", page: int = 1, text: str = "Some tex
     """Return a minimal SearchResult for tests that need non-empty results."""
     return SearchResult(
         chunk_id="abc123def456abcd",
-        pdf_id="testpdf123456789",
+        source_id="testpdf123456789",
+        source_type="pdf",
         filename=filename,
         page_number=page,
         text=text,
         token_count=3,
         language="en",
         bbox=None,
+        access_roles=[],
         similarity=0.9,
     )
 
@@ -203,13 +205,15 @@ def test_generate_calls_build_user_message_with_query_and_results():
     results = [
         SearchResult(
             chunk_id="abc123def456abcd",
-            pdf_id="testpdf123456789",
+            source_id="testpdf123456789",
+            source_type="pdf",
             filename="doc.pdf",
             page_number=1,
             text="Some text.",
             token_count=3,
             language="en",
             bbox=None,
+            access_roles=[],
             similarity=0.9,
         )
     ]

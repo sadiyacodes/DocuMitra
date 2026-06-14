@@ -7,13 +7,15 @@ from backend.generation.prompt_templates import NO_ANSWER_RESPONSE, SYSTEM_PROMP
 def _make_result(filename: str = "doc.pdf", page: int = 3, text: str = "Some text.") -> SearchResult:
     return SearchResult(
         chunk_id="abc123def456abcd",
-        pdf_id="testpdf123456789",
+        source_id="testpdf123456789",
+        source_type="pdf",
         filename=filename,
         page_number=page,
         text=text,
         token_count=3,
         language="en",
         bbox=None,
+        access_roles=[],
         similarity=0.9,
     )
 

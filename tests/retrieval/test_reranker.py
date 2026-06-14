@@ -40,13 +40,15 @@ from backend.retrieval.vector_store import SearchResult
 def _make_result(idx: int = 0, text: str = "chunk text") -> SearchResult:
     return SearchResult(
         chunk_id=f"chunk{idx:016d}",
-        pdf_id="testpdf123456789",
+        source_id="testpdf123456789",
+        source_type="pdf",
         filename="doc.pdf",
         page_number=idx + 1,
         text=text,
         token_count=5,
         language="en",
         bbox=None,
+        access_roles=[],
         similarity=max(0.0, 0.9 - idx * 0.1),
     )
 
