@@ -29,3 +29,24 @@ export async function login(username: string, password: string): Promise<void> {
 export function logout(): void {
   clearToken()
 }
+
+function _decodePayload(token: string): Record<string, unknown> | null {
+  try {
+    const b64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')
+    return JSON.parse(atob(b64))
+  } catch { return null }
+}
+
+export function getRole(): string | null {
+  const token = getToken()
+  if (!token) return null
+  const p = _decodePayload(token)
+  return (p?.role as string) ?? null
+}
+
+export function getUsername(): string | null {
+  const token = getToken()
+  if (!token) return null
+  const p = _decodePayload(token)
+  return (p?.sub as string) ?? null
+}

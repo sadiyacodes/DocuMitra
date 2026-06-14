@@ -59,6 +59,7 @@ def _upsert_rows(
     rows = [
         {
             "chunk_id":     c.chunk_id,
+            "pdf_id":       c.source_id,
             "source_id":    c.source_id,
             "source_type":  c.source_type,
             "filename":     c.filename,

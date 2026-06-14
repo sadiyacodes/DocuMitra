@@ -1,10 +1,18 @@
--- 1. Add new columns
+-- 1. Add new columns (idempotent)
 ALTER TABLE chunks ADD COLUMN IF NOT EXISTS source_id    text;
 ALTER TABLE chunks ADD COLUMN IF NOT EXISTS source_type  text NOT NULL DEFAULT 'pdf';
 ALTER TABLE chunks ADD COLUMN IF NOT EXISTS access_roles text[] NOT NULL DEFAULT '{}';
 
--- 2. Backfill source_id from existing pdf_id values
-UPDATE chunks SET source_id = pdf_id WHERE source_id IS NULL;
+-- 2. Backfill source_id from existing pdf_id values (only if pdf_id column exists)
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'chunks' AND column_name = 'pdf_id'
+  ) THEN
+    UPDATE chunks SET source_id = pdf_id WHERE source_id IS NULL;
+  END IF;
+END $$;
 
 -- 3. Make source_id required
 ALTER TABLE chunks ALTER COLUMN source_id SET NOT NULL;
@@ -13,6 +21,7 @@ ALTER TABLE chunks ALTER COLUMN source_id SET NOT NULL;
 DROP FUNCTION IF EXISTS match_chunks(vector, int);
 
 -- 5. Create updated match_chunks RPC
+--    bbox is jsonb in the actual table, so the return type must match
 CREATE OR REPLACE FUNCTION match_chunks(
   query_embedding vector(384),
   match_count     int,
@@ -28,7 +37,7 @@ RETURNS TABLE (
   text         text,
   token_count  int,
   language     text,
-  bbox         float[],
+  bbox         jsonb,
   access_roles text[],
   similarity   float
 )

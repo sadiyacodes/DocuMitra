@@ -111,6 +111,28 @@ export async function ingestFile(file: File, roles: string[] = [], token?: strin
   return res.json()
 }
 
+export async function ingestCsv(file: File, roles: string[] = [], token?: string | null): Promise<IngestResponse> {
+  const form = new FormData()
+  form.append('file', file)
+  form.append('roles', roles.join(','))
+  const headers: HeadersInit = {}
+  if (token) headers['Authorization'] = `Bearer ${token}`
+  const res = await fetch(`${BASE}/ingest/csv`, { method: 'POST', headers, body: form })
+  await assertOk(res)
+  return res.json()
+}
+
+export async function ingestJson(file: File, roles: string[] = [], token?: string | null): Promise<IngestResponse> {
+  const form = new FormData()
+  form.append('file', file)
+  form.append('roles', roles.join(','))
+  const headers: HeadersInit = {}
+  if (token) headers['Authorization'] = `Bearer ${token}`
+  const res = await fetch(`${BASE}/ingest/json`, { method: 'POST', headers, body: form })
+  await assertOk(res)
+  return res.json()
+}
+
 export async function getChunks(query: string, k: number, token?: string | null): Promise<ChunksResponse> {
   const params = new URLSearchParams({ query, k: String(k) })
   const headers: HeadersInit = {}

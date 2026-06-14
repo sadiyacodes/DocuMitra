@@ -33,10 +33,18 @@ function ChunkCard({ result }: { result: SearchResult }) {
           {expanded ? 'Show less' : 'Show more'}
         </button>
       )}
-      <div className="mt-2 flex gap-2 text-xs text-gray-400">
+      <div className="mt-2 flex flex-wrap gap-2 text-xs text-gray-400">
         <span>{result.language}</span>
         <span>·</span>
         <span>{result.token_count} tokens</span>
+        <span>·</span>
+        <span className="uppercase tracking-wide">{result.source_type}</span>
+        {result.access_roles.length > 0 && (
+          <>
+            <span>·</span>
+            <span>{result.access_roles.join(', ')}</span>
+          </>
+        )}
       </div>
     </div>
   )
