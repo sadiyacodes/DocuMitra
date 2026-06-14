@@ -17,7 +17,7 @@ def _mock_user():
 
 def test_login_success_returns_token(client):
     with patch("backend.auth.router.get_user", return_value=_mock_user()), \
-         patch("backend.auth.router._pwd_ctx.verify", return_value=True):
+         patch("backend.auth.router._verify_password", return_value=True):
         resp = client.post("/auth/login", data={"username": "alice", "password": "admin123"})
     assert resp.status_code == 200
     body = resp.json()
@@ -27,7 +27,7 @@ def test_login_success_returns_token(client):
 
 def test_login_wrong_password_returns_401(client):
     with patch("backend.auth.router.get_user", return_value=_mock_user()), \
-         patch("backend.auth.router._pwd_ctx.verify", return_value=False):
+         patch("backend.auth.router._verify_password", return_value=False):
         resp = client.post("/auth/login", data={"username": "alice", "password": "wrong"})
     assert resp.status_code == 401
 

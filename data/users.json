@@ -1,22 +1,22 @@
 [
   {
     "username": "alice",
-    "hashed_password": "2a410b27cc56a07f61fe20e199fae2ff31ba68eb239e9263568f5281b3bcd89b",
+    "hashed_password": "$2b$12$tGOZQW09GpiOFAoHJMMpEu6jQ5UpnMzj.mtBAoPmNwG1sfvdoZueG",
     "role": "admin"
   },
   {
     "username": "bob",
-    "hashed_password": "c1383f5215e93f9fcdbf46d143c40282846267c037c137c9c9be6d4ae7e993b3",
+    "hashed_password": "$2b$12$FBYPi92b2RekYEex3Rq8kOzEqpdFmzP0/.SOhttwz31I8bVn64Tae",
     "role": "hr"
   },
   {
     "username": "carol",
-    "hashed_password": "6ad5b6acd5ce8bf42bffb1735158b3c58d1515aec81b42679467e944c70c4000",
+    "hashed_password": "$2b$12$fEv6236bPfqssWyLvX0BTec9XeovtkuPFT0Q/wuZE0wORa75VR3F2",
     "role": "finance"
   },
   {
     "username": "dave",
-    "hashed_password": "7139afd7b9601bde49e50ed737fe66b9f64053b000ee7f662a89267a4e4f7aa9",
+    "hashed_password": "$2b$12$F2VvfTO0i7zmO2bSNcrCju5c1RIqOXNH5XpZx6S.trwIWWaix0Uv.",
     "role": "engineering"
   }
 ]

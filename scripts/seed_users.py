@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Generate data/users.json with hashed passwords."""
+"""Generate data/users.json with bcrypt-hashed passwords."""
 import json
-import hashlib
+import bcrypt
 from pathlib import Path
 
 USERS = [
@@ -11,15 +11,10 @@ USERS = [
     {"username": "dave",  "password": "eng123",     "role": "engineering"},
 ]
 
-def hash_password(password: str) -> str:
-    """Hash password using SHA-256 with salt."""
-    salt = "docmitra_salt_2024"
-    return hashlib.sha256(f"{salt}{password}".encode()).hexdigest()
-
 out = [
     {
         "username": u["username"],
-        "hashed_password": hash_password(u["password"]),
+        "hashed_password": bcrypt.hashpw(u["password"].encode(), bcrypt.gensalt()).decode(),
         "role": u["role"],
     }
     for u in USERS
