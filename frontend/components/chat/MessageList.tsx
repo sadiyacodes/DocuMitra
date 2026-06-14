@@ -137,6 +137,21 @@ export default function MessageList({ messages, isStreaming, bottomRef, onSugges
                   {msg.content}
                 </ReactMarkdown>
               </div>
+              {msg.role === 'assistant' && msg.sources && msg.sources.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {msg.sources.map((s, i) => (
+                    <span
+                      key={i}
+                      title={`${s.filename} · p.${s.page} · ${s.source_type} · ${(s.similarity * 100).toFixed(0)}% match`}
+                      className="inline-flex items-center gap-1 text-xs bg-gray-100 text-gray-600 rounded-full px-2 py-0.5 border border-gray-200"
+                    >
+                      <span className="font-medium">{s.filename}</span>
+                      <span className="text-gray-400">p.{s.page}</span>
+                      <span className="text-blue-500">{(s.similarity * 100).toFixed(0)}%</span>
+                    </span>
+                  ))}
+                </div>
+              )}
               {showCursor && <span className="animate-pulse text-gray-400 ml-0.5">▍</span>}
             </div>
           </div>

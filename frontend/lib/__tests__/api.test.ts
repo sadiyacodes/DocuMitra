@@ -1,4 +1,4 @@
-import { ApiError, getChunks, ingestFile, streamQuery } from '../api'
+import { ApiError, getChunks, ingestFile, streamQuery, type StreamEvent } from '../api'
 
 function makeSSEStream(chunks: string[]): ReadableStream<Uint8Array> {
   const enc = new TextEncoder()
@@ -22,18 +22,22 @@ function mockFetch(body: unknown, status = 200) {
   } as unknown as Response)
 }
 
-test('streamQuery yields text chunks', async () => {
+test('streamQuery yields text events', async () => {
   mockFetch(makeSSEStream(['Hello ', 'world']))
-  const chunks: string[] = []
-  for await (const c of streamQuery('test')) chunks.push(c)
-  expect(chunks).toEqual(['Hello ', 'world'])
+  const events: StreamEvent[] = []
+  for await (const e of streamQuery('test')) events.push(e)
+  const textEvents = events.filter(e => e.type === 'text')
+  expect(textEvents).toHaveLength(2)
+  expect((textEvents[0] as { type: 'text'; content: string }).content).toBe('Hello ')
+  expect((textEvents[1] as { type: 'text'; content: string }).content).toBe('world')
 })
 
 test('streamQuery stops at [DONE]', async () => {
   mockFetch(makeSSEStream(['chunk']))
-  const chunks: string[] = []
-  for await (const c of streamQuery('test')) chunks.push(c)
-  expect(chunks).toEqual(['chunk'])
+  const events: StreamEvent[] = []
+  for await (const e of streamQuery('test')) events.push(e)
+  const textEvents = events.filter(e => e.type === 'text')
+  expect(textEvents).toHaveLength(1)
 })
 
 test('streamQuery throws ApiError on non-ok response', async () => {
@@ -48,9 +52,9 @@ test('streamQuery throws ApiError on non-ok response', async () => {
 })
 
 test('ingestFile returns parsed response', async () => {
-  mockFetch({ pdf_id: 'abc', filename: 'doc.pdf', chunks_added: 5 })
+  mockFetch({ source_id: 'abc', filename: 'doc.pdf', chunks_added: 5 })
   const result = await ingestFile(new File([''], 'doc.pdf', { type: 'application/pdf' }))
-  expect(result).toEqual({ pdf_id: 'abc', filename: 'doc.pdf', chunks_added: 5 })
+  expect(result).toEqual({ source_id: 'abc', filename: 'doc.pdf', chunks_added: 5 })
 })
 
 test('ingestFile throws ApiError on 422', async () => {

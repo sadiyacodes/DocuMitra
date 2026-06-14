@@ -5,12 +5,16 @@ jest.mock('@/lib/api', () => ({
   streamQuery: jest.fn(),
 }))
 
+jest.mock('@/lib/auth', () => ({
+  getToken: jest.fn(() => null),
+}))
+
 import { streamQuery } from '@/lib/api'
 const mockStreamQuery = streamQuery as jest.MockedFunction<typeof streamQuery>
 
 function makeAsyncGen(...chunks: string[]) {
   return async function* () {
-    for (const c of chunks) yield c
+    for (const c of chunks) yield { type: 'text' as const, content: c }
   }
 }
 

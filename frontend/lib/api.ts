@@ -9,18 +9,27 @@ export class ApiError extends Error {
 
 export interface SearchResult {
   chunk_id: string
-  pdf_id: string
+  source_id: string
+  source_type: string
   filename: string
   page_number: number
   text: string
   token_count: number
   language: string
   bbox: number[] | null
+  access_roles: string[]
   similarity: number
 }
 
+export interface SourceResult {
+  filename: string
+  page: number
+  similarity: number
+  source_type: string
+}
+
 export interface IngestResponse {
-  pdf_id: string
+  source_id: string
   filename: string
   chunks_added: number
 }
@@ -28,6 +37,10 @@ export interface IngestResponse {
 export interface ChunksResponse {
   results: SearchResult[]
 }
+
+export type StreamEvent =
+  | { type: 'text'; content: string }
+  | { type: 'sources'; sources: SourceResult[] }
 
 async function assertOk(res: Response): Promise<void> {
   if (!res.ok) {
@@ -40,13 +53,20 @@ async function assertOk(res: Response): Promise<void> {
   }
 }
 
+function authHeader(token?: string | null): HeadersInit {
+  const h: HeadersInit = { 'Content-Type': 'application/json' }
+  if (token) h['Authorization'] = `Bearer ${token}`
+  return h
+}
+
 export async function* streamQuery(
   query: string,
   rerank = true,
-): AsyncGenerator<string> {
+  token?: string | null,
+): AsyncGenerator<StreamEvent> {
   const res = await fetch(`${BASE}/query`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeader(token),
     body: JSON.stringify({ query, rerank }),
   })
   await assertOk(res)
@@ -62,28 +82,40 @@ export async function* streamQuery(
     const parts = buffer.split('\n\n')
     buffer = parts.pop() ?? ''
     for (const part of parts) {
-      if (part.startsWith('data: ')) {
-        const data = part.slice(6)
-        if (data === '[DONE]') return
-        try {
-          yield JSON.parse(data) as string
-        } catch {}
+      const lines = part.split('\n')
+      let eventType = 'message'
+      let data = ''
+      for (const line of lines) {
+        if (line.startsWith('event: ')) eventType = line.slice(7).trim()
+        else if (line.startsWith('data: ')) data = line.slice(6)
+      }
+      if (eventType === 'sources') {
+        try { yield { type: 'sources', sources: JSON.parse(data) as SourceResult[] } } catch {}
+      } else if (data === '[DONE]') {
+        return
+      } else if (data) {
+        try { yield { type: 'text', content: JSON.parse(data) as string } } catch {}
       }
     }
   }
 }
 
-export async function ingestFile(file: File): Promise<IngestResponse> {
+export async function ingestFile(file: File, roles: string[] = [], token?: string | null): Promise<IngestResponse> {
   const form = new FormData()
   form.append('file', file)
-  const res = await fetch(`${BASE}/ingest`, { method: 'POST', body: form })
+  form.append('roles', roles.join(','))
+  const headers: HeadersInit = {}
+  if (token) headers['Authorization'] = `Bearer ${token}`
+  const res = await fetch(`${BASE}/ingest`, { method: 'POST', headers, body: form })
   await assertOk(res)
   return res.json()
 }
 
-export async function getChunks(query: string, k: number): Promise<ChunksResponse> {
+export async function getChunks(query: string, k: number, token?: string | null): Promise<ChunksResponse> {
   const params = new URLSearchParams({ query, k: String(k) })
-  const res = await fetch(`${BASE}/chunks?${params}`)
+  const headers: HeadersInit = {}
+  if (token) headers['Authorization'] = `Bearer ${token}`
+  const res = await fetch(`${BASE}/chunks?${params}`, { headers })
   await assertOk(res)
   return res.json()
 }

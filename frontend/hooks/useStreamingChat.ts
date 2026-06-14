@@ -1,12 +1,14 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { streamQuery } from '@/lib/api'
+import { streamQuery, type SourceResult } from '@/lib/api'
+import { getToken } from '@/lib/auth'
 
 export interface Message {
   id: string
   role: 'user' | 'assistant'
   content: string
+  sources?: SourceResult[]
   timestamp: number
 }
 
@@ -56,12 +58,16 @@ export function useStreamingChat() {
     setMessages(prev => [...prev, userMsg, assistantMsg])
 
     try {
-      for await (const chunk of streamQuery(query)) {
-        setMessages(prev =>
-          prev.map(m =>
-            m.id === assistantId ? { ...m, content: m.content + chunk } : m,
-          ),
-        )
+      for await (const event of streamQuery(query, true, getToken())) {
+        if (event.type === 'sources') {
+          setMessages(prev =>
+            prev.map(m => m.id === assistantId ? { ...m, sources: event.sources } : m),
+          )
+        } else if (event.type === 'text') {
+          setMessages(prev =>
+            prev.map(m => m.id === assistantId ? { ...m, content: m.content + event.content } : m),
+          )
+        }
       }
     } finally {
       isStreamingRef.current = false
