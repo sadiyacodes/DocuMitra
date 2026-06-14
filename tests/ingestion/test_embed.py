@@ -85,13 +85,15 @@ def _make_chunk(
 ) -> Chunk:
     return Chunk(
         chunk_id=chunk_id,
-        pdf_id="testpdf123456789",
+        source_id="testpdf123456789",
+        source_type="pdf",
         filename="doc.pdf",
         page_number=1,
         text="This is some chunk text.",
         token_count=5,
         language="en",
         bbox=bbox,
+        access_roles=[],
     )
 
 
@@ -120,12 +122,14 @@ def test_upsert_rows_row_contains_all_chunk_fields():
     assert len(rows) == 1
     row = rows[0]
     assert row["chunk_id"] == chunk.chunk_id
-    assert row["pdf_id"] == chunk.pdf_id
+    assert row["source_id"] == chunk.source_id
+    assert row["source_type"] == chunk.source_type
     assert row["filename"] == chunk.filename
     assert row["page_number"] == chunk.page_number
     assert row["text"] == chunk.text
     assert row["token_count"] == chunk.token_count
     assert row["language"] == chunk.language
+    assert row["access_roles"] == chunk.access_roles
 
 
 def test_upsert_rows_embedding_is_list_of_floats():
@@ -300,3 +304,35 @@ def test_upsert_rows_batches_large_input():
     client = _make_upsert_client()
     _upsert_rows(chunks, vectors, client)
     assert client.table.return_value.upsert.call_count == 2
+
+
+def test_upsert_rows_include_source_fields():
+    from backend.ingestion.chunker import Chunk
+    import numpy as np
+    from unittest.mock import MagicMock, patch
+
+    chunk = Chunk(
+        chunk_id="abc123",
+        source_id="src-01",
+        source_type="csv",
+        filename="test.csv",
+        page_number=1,
+        text="hello world",
+        token_count=2,
+        language="en",
+        bbox=None,
+        access_roles=["admin", "hr"],
+    )
+    vectors = np.zeros((1, 384))
+    client = MagicMock()
+    client.table.return_value.upsert.return_value.execute.return_value = MagicMock()
+
+    with patch("backend.ingestion.embed._fetch_existing_ids", return_value=set()):
+        _upsert_rows([chunk], vectors, client)
+
+    rows = client.table.return_value.upsert.call_args[0][0]
+    row = rows[0]
+    assert row["source_id"] == "src-01"
+    assert row["source_type"] == "csv"
+    assert row["access_roles"] == ["admin", "hr"]
+    assert "pdf_id" not in row
