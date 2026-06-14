@@ -11,34 +11,40 @@ from backend.ingestion.extract import PageContent, ExtractedDocument
 def test_chunk_fields():
     chunk = Chunk(
         chunk_id="abc123def456abcd",
-        pdf_id="deadbeef12345678",
+        source_id="deadbeef12345678",
+        source_type="pdf",
         filename="report.pdf",
         page_number=3,
         text="This is chunk text.",
         token_count=4,
         language="en",
         bbox=(0.0, 0.0, 595.0, 842.0),
+        access_roles=[],
     )
     assert chunk.chunk_id == "abc123def456abcd"
-    assert chunk.pdf_id == "deadbeef12345678"
+    assert chunk.source_id == "deadbeef12345678"
+    assert chunk.source_type == "pdf"
     assert chunk.filename == "report.pdf"
     assert chunk.page_number == 3
     assert chunk.text == "This is chunk text."
     assert chunk.token_count == 4
     assert chunk.language == "en"
     assert chunk.bbox == (0.0, 0.0, 595.0, 842.0)
+    assert chunk.access_roles == []
 
 
 def test_chunk_bbox_none():
     chunk = Chunk(
         chunk_id="abc123def456abcd",
-        pdf_id="deadbeef12345678",
+        source_id="deadbeef12345678",
+        source_type="pdf",
         filename="report.pdf",
         page_number=1,
         text="Text.",
         token_count=1,
         language="en",
         bbox=None,
+        access_roles=[],
     )
     assert chunk.bbox is None
 
@@ -161,7 +167,8 @@ def test_chunk_page_chunk_id_is_deterministic():
 def test_chunk_page_metadata_inherited_from_page():
     page = _make_page("Hello world.")
     chunks = _chunk_page(page, _word_tokenizer(), max_tokens=20, overlap_tokens=3)
-    assert chunks[0].pdf_id == "testpdf1234567"
+    assert chunks[0].source_id == "testpdf1234567"
+    assert chunks[0].source_type == "pdf"
     assert chunks[0].filename == "test.pdf"
     assert chunks[0].page_number == 1
     assert chunks[0].bbox == (0.0, 0.0, 595.0, 842.0)
@@ -269,3 +276,17 @@ def test_chunk_document_returns_list_of_chunk():
     with patch("backend.ingestion.chunker._get_tokenizer", return_value=_word_tokenizer()):
         chunks = chunk_document(_make_doc(pages))
     assert all(isinstance(c, Chunk) for c in chunks)
+
+
+def test_chunk_document_passes_access_roles():
+    pages = [_make_page("Hello world. " * 10, page_number=1)]
+    with patch("backend.ingestion.chunker._get_tokenizer", return_value=_word_tokenizer()):
+        chunks = chunk_document(_make_doc(pages), access_roles=["hr", "admin"])
+    assert all(c.access_roles == ["hr", "admin"] for c in chunks)
+
+
+def test_chunk_has_source_type_pdf():
+    pages = [_make_page("Hello world. " * 10, page_number=1)]
+    with patch("backend.ingestion.chunker._get_tokenizer", return_value=_word_tokenizer()):
+        chunks = chunk_document(_make_doc(pages))
+    assert all(c.source_type == "pdf" for c in chunks)
